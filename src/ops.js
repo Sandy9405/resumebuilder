@@ -17,14 +17,31 @@ export function emptyResume(settings = {}) {
       pages: settings.pages === 2 ? 2 : 1,
       buildMode: settings.buildMode || 'talk',
     },
-    header: { name: '', tagline: '', email: '', phone: '', location: '', links: [] },
+    header: { name: '', tagline: '', email: '', phone: '', location: '', links: [], details: [] },
+    profile: emptyProfile(),
     sections: [],
+  };
+}
+
+export const CAREER_STAGES = ['student', 'early', 'mid', 'experienced', 'senior'];
+
+export function emptyProfile() {
+  return {
+    jobFamilies: [],
+    currentRole: '',
+    yearsExperience: '',
+    industry: '',
+    specialization: '',
+    careerStage: '',
+    targetRole: '',
   };
 }
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
-function cleanItem(raw, id) {
+const strList = (v) => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
+
+function cleanItem(raw, id, prev) {
   return {
     id: id || newId('i'),
     heading: str(raw?.heading),
@@ -32,7 +49,11 @@ function cleanItem(raw, id) {
     location: str(raw?.location),
     dates: str(raw?.dates),
     detail: str(raw?.detail),
-    bullets: Array.isArray(raw?.bullets) ? raw.bullets.map(str).filter(Boolean) : [],
+    note: str(raw?.note),
+    bullets: strList(raw?.bullets),
+    // Detail kept for longer versions of the resume but not shown at the current length.
+    reserve: raw?.reserve_bullets !== undefined ? strList(raw.reserve_bullets) : prev?.reserve || [],
+    hidden: typeof raw?.hidden === 'boolean' ? raw.hidden : prev?.hidden || false,
   };
 }
 
@@ -43,7 +64,20 @@ function cleanHeader(raw) {
     email: str(raw?.email),
     phone: str(raw?.phone),
     location: str(raw?.location),
-    links: Array.isArray(raw?.links) ? raw.links.map(str).filter(Boolean) : [],
+    links: strList(raw?.links),
+    details: strList(raw?.details),
+  };
+}
+
+function cleanProfile(raw) {
+  return {
+    jobFamilies: strList(raw?.job_families).slice(0, 4),
+    currentRole: str(raw?.current_role),
+    yearsExperience: str(raw?.years_experience),
+    industry: str(raw?.industry),
+    specialization: str(raw?.specialization),
+    careerStage: CAREER_STAGES.includes(raw?.career_stage) ? raw.career_stage : '',
+    targetRole: str(raw?.target_role),
   };
 }
 
@@ -91,6 +125,7 @@ export function applyOp(resume, name, input) {
           id: newId('s'),
           kind: kindOf(s.kind),
           title: str(s.title) || kindOf(s.kind),
+          hidden: false,
           items: (s.items || []).map((it) => cleanItem(it)),
         })),
         resume.settings.template,
@@ -102,7 +137,7 @@ export function applyOp(resume, name, input) {
       return 'Updated header';
     }
     case 'add_section': {
-      const sec = { id: newId('s'), kind: kindOf(input.kind), title: str(input.title) || kindOf(input.kind), items: [] };
+      const sec = { id: newId('s'), kind: kindOf(input.kind), title: str(input.title) || kindOf(input.kind), hidden: false, items: [] };
       insertAfter(resume.sections, sec, input.after_section_id);
       return `Added section "${sec.title}" (${sec.id})`;
     }
@@ -133,7 +168,7 @@ export function applyOp(resume, name, input) {
     case 'update_item': {
       const sec = findSection(resume, input.section_id);
       const i = findItemIndex(sec, input.item_id);
-      sec.items[i] = cleanItem(input.item, sec.items[i].id);
+      sec.items[i] = cleanItem(input.item, sec.items[i].id, sec.items[i]);
       return `Updated "${sec.items[i].org || sec.items[i].heading}" in ${sec.title}`;
     }
     case 'remove_item': {
@@ -141,6 +176,21 @@ export function applyOp(resume, name, input) {
       const i = findItemIndex(sec, input.item_id);
       const [gone] = sec.items.splice(i, 1);
       return `Removed "${gone.org || gone.heading}" from ${sec.title}`;
+    }
+    case 'set_profile': {
+      resume.profile = cleanProfile(input);
+      const p = resume.profile;
+      return `Profile: ${[p.jobFamilies.join(' / '), p.careerStage, p.targetRole && `target ${p.targetRole}`].filter(Boolean).join(', ')}`;
+    }
+    case 'set_visibility': {
+      const sec = findSection(resume, input.section_id);
+      if (!input.item_id) {
+        sec.hidden = !!input.hidden;
+        return `${input.hidden ? 'Hid' : 'Showed'} section "${sec.title}" (kept in your data)`;
+      }
+      const it = sec.items[findItemIndex(sec, input.item_id)];
+      it.hidden = !!input.hidden;
+      return `${input.hidden ? 'Hid' : 'Showed'} "${it.org || it.heading}" (kept in your data)`;
     }
     case 'set_format': {
       const before = resume.settings.template;
@@ -196,6 +246,48 @@ export function applyManualEdit(resume, path, value) {
     else item.bullets.splice(n, 1);
     return;
   }
-  if (!['heading', 'org', 'location', 'dates', 'detail'].includes(parts[2])) throw new OpError('Bad field');
+  if (!['heading', 'org', 'location', 'dates', 'detail', 'note'].includes(parts[2])) throw new OpError('Bad field');
   item[parts[2]] = v;
 }
+
+/** Migrate older saved state to the current shape. */
+export function normalizeResume(r) {
+  r.header = cleanHeader(r.header);
+  r.profile = { ...emptyProfile(), ...(r.profile || {}) };
+  r.sections = (r.sections || []).map((s) => ({
+    ...s,
+    hidden: !!s.hidden,
+    items: (s.items || []).map((it) => ({ note: '', reserve: [], hidden: false, ...it })),
+  }));
+  return r;
+}
+
+// ---------------------------------------------------------------- undo/redo
+
+const MAX_HISTORY = 50;
+const snap = (r) => JSON.stringify(r);
+
+/** Record the state before a change. Call with the pre-change snapshot string. */
+export function pushHistory(session, before) {
+  if (before === snap(session.resume)) return false;
+  session.undo.push(before);
+  if (session.undo.length > MAX_HISTORY) session.undo.shift();
+  session.redo = [];
+  return true;
+}
+
+export function undo(session) {
+  if (!session.undo.length) return false;
+  session.redo.push(snap(session.resume));
+  session.resume = JSON.parse(session.undo.pop());
+  return true;
+}
+
+export function redo(session) {
+  if (!session.redo.length) return false;
+  session.undo.push(snap(session.resume));
+  session.resume = JSON.parse(session.redo.pop());
+  return true;
+}
+
+export { snap as snapshot };

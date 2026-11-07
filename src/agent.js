@@ -1,19 +1,19 @@
 // One conversational turn: send the user's message plus current resume state,
-// let the model call edit tools, apply them, feed results back, repeat until it
-// replies. The message history is append-only (required for preserved thinking
-// and good for prompt caching).
+// let the model call edit tools, apply them, run content and visual QA, feed
+// the results back, repeat until it replies. The message history is
+// append-only (required for preserved thinking and good for prompt caching).
 
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './prompt.js';
 import { TOOLS } from './tools.js';
-import { applyOp, OpError } from './ops.js';
+import { applyOp, OpError, snapshot, pushHistory } from './ops.js';
 import { lintResume } from '../shared/lint.js';
-import { measureFit } from './layout.js';
+import { measureLayout, describeFit } from './layout.js';
 import { getTemplate } from '../shared/templates.js';
 
 export const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5-5';
 const EFFORT = process.env.CLAUDE_EFFORT || 'medium';
-const MAX_STEPS = 8;
+const MAX_STEPS = 10;
 
 let client = null;
 export function setClient(c) {
@@ -27,21 +27,30 @@ function getClient() {
 function stateBlock(session) {
   const r = session.resume;
   const t = getTemplate(r.settings.template);
-  const lines = [
+  const hidden = [];
+  for (const s of r.sections) {
+    if (s.hidden) hidden.push(`section "${s.title}"`);
+    else for (const it of s.items) if (it.hidden) hidden.push(`"${it.org || it.heading}" in ${s.title}`);
+  }
+  return [
     '<resume_state>',
-    `Build mode: ${r.settings.buildMode}. Format: ${t.label} (id ${t.id}). Page limit: ${r.settings.pages}.`,
-    session.fit ? `Page fit: ${session.fit.message}` : 'Page fit: not measured yet.',
+    `Build mode: ${r.settings.buildMode}. Format: ${t.label} (id ${t.id}), ${t.page.name} paper. Page limit: ${r.settings.pages}.`,
+    `Layout: ${session.layout ? describeFit(session.layout) : 'not measured yet.'}`,
+    hidden.length ? `Hidden for length (kept in data): ${hidden.join('; ')}.` : 'Hidden for length: nothing.',
+    `Profile: ${JSON.stringify(r.profile)}`,
     JSON.stringify({ header: r.header, sections: r.sections }),
     '</resume_state>',
-  ];
-  return lines.join('\n');
+  ].join('\n');
 }
 
-function summarizeIssues(issues) {
-  if (!issues.length) return 'Checks: no issues.';
-  const top = issues.slice(0, 12).map((i) => `- [${i.code}] ${i.message} (at ${i.path})`);
-  const more = issues.length > 12 ? `\n- ...and ${issues.length - 12} more` : '';
-  return `Checks:\n${top.join('\n')}${more}`;
+/** Content checks + visual QA, condensed for the model. */
+export function qaSummary(session) {
+  const content = lintResume(session.resume, session.sourceText);
+  const visual = session.layout?.issues || [];
+  const all = [...visual.filter((i) => i.level === 'error'), ...content, ...visual.filter((i) => i.level !== 'error')];
+  const lines = all.slice(0, 15).map((i) => `- [${i.code}] ${i.message}${i.path ? ` (at ${i.path})` : ''}`);
+  if (all.length > 15) lines.push(`- ...and ${all.length - 15} more`);
+  return `Layout: ${describeFit(session.layout)}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
 }
 
 const textOf = (content) =>
@@ -57,65 +66,66 @@ const textOf = (content) =>
  * @returns {Promise<{reply:string, changes:string[]}>}
  */
 export async function runTurn(session, userBlocks) {
-  session.messages.push({ role: 'user', content: [...userBlocks, { type: 'text', text: stateBlock(session) }] });
+  const notes = session.pendingNotes.splice(0).map((n) => ({ type: 'text', text: `(App note: ${n})` }));
+  session.messages.push({ role: 'user', content: [...notes, ...userBlocks, { type: 'text', text: stateBlock(session) }] });
 
+  const before = snapshot(session.resume);
   const changes = [];
   const replies = [];
 
-  for (let step = 0; step < MAX_STEPS; step++) {
-    const response = await getClient().beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      system: SYSTEM_PROMPT,
-      tools: TOOLS,
-      messages: session.messages,
-      cache_control: { type: 'ephemeral' },
-      output_config: { effort: EFFORT },
-      ...(process.env.CLAUDE_FALLBACKS === 'off'
-        ? {}
-        : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
-    });
+  try {
+    for (let step = 0; step < MAX_STEPS; step++) {
+      const response = await getClient().beta.messages.create({
+        model: MODEL,
+        max_tokens: 16000,
+        system: SYSTEM_PROMPT,
+        tools: TOOLS,
+        messages: session.messages,
+        cache_control: { type: 'ephemeral' },
+        output_config: { effort: EFFORT },
+        ...(process.env.CLAUDE_FALLBACKS === 'off' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
+      });
 
-    session.messages.push({ role: 'assistant', content: response.content });
-    const said = textOf(response.content);
-    if (said) replies.push(said);
+      session.messages.push({ role: 'assistant', content: response.content });
+      const said = textOf(response.content);
+      if (said) replies.push(said);
 
-    if (response.stop_reason === 'refusal') {
-      replies.push("I can't help with that request. Let's keep going with your resume.");
-      break;
-    }
-    if (response.stop_reason === 'max_tokens') {
-      replies.push('That response was cut off. Please ask again, or ask for a smaller change.');
-      break;
-    }
-    if (response.stop_reason !== 'tool_use') break;
-
-    const results = [];
-    let applied = false;
-    for (const block of response.content) {
-      if (block.type !== 'tool_use') continue;
-      try {
-        const what = applyOp(session.resume, block.name, block.input);
-        changes.push(what);
-        applied = true;
-        results.push({ type: 'tool_result', tool_use_id: block.id, content: what });
-      } catch (err) {
-        if (!(err instanceof OpError)) throw err;
-        results.push({ type: 'tool_result', tool_use_id: block.id, content: err.message, is_error: true });
+      if (response.stop_reason === 'refusal') {
+        replies.push("I can't help with that request. Let's keep going with your resume.");
+        break;
       }
-    }
-    // Attach checks and page fit once per batch, to the last result.
-    if (applied) {
-      session.fit = await measureFit(session.resume);
-      const issues = lintResume(session.resume, session.sourceText);
-      const last = results[results.length - 1];
-      last.content = `${last.content}\n\n${summarizeIssues(issues)}\n${
-        session.fit ? `Page fit: ${session.fit.message}` : 'Page fit: unavailable.'
-      }`;
-    }
-    session.messages.push({ role: 'user', content: results });
-  }
+      if (response.stop_reason === 'max_tokens') {
+        replies.push('That response was cut off. Please ask again, or ask for a smaller change.');
+        break;
+      }
+      if (response.stop_reason !== 'tool_use') break;
 
+      const results = [];
+      let applied = false;
+      for (const block of response.content) {
+        if (block.type !== 'tool_use') continue;
+        try {
+          const what = applyOp(session.resume, block.name, block.input);
+          changes.push(what);
+          applied = true;
+          results.push({ type: 'tool_result', tool_use_id: block.id, content: what });
+        } catch (err) {
+          if (!(err instanceof OpError)) throw err;
+          results.push({ type: 'tool_result', tool_use_id: block.id, content: err.message, is_error: true });
+        }
+      }
+      // Re-lay-out and re-check once per batch; attach to the last result.
+      if (applied) {
+        session.layout = await measureLayout(session.resume);
+        const last = results[results.length - 1];
+        last.content = `${last.content}\n\n${qaSummary(session)}`;
+      }
+      session.messages.push({ role: 'user', content: results });
+    }
+  } finally {
+    // One undo step per turn, however many tool calls it took (even if the turn failed midway).
+    pushHistory(session, before);
+  }
   return { reply: replies.join('\n\n') || 'Done.', changes };
 }
 

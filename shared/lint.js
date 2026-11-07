@@ -25,6 +25,9 @@ export const AI_PHRASES = [
   [/\bplayed a (key|pivotal|crucial|vital) role\b/i, 'played a key role'],
   [/\bdemonstrated (exceptional|strong) leadership\b/i, 'demonstrated leadership'],
   [/\bin today'?s fast[- ]paced\b/i, "today's fast-paced"],
+  [/\bstrategic synerg/i, 'strategic synergies'],
+  [/\bresponsible for\b/i, 'responsible for (say what was done)'],
+  [/\bvarious\b/i, 'various'],
 ];
 
 const PLACEHOLDER = /\[[^\]]*\]|\bTBD\b|\bX+%|\bN\/A\b|lorem ipsum|\?\?/i;
@@ -68,8 +71,10 @@ export function* resumeTexts(resume) {
   const h = resume.header || {};
   if (h.tagline) yield ['header.tagline', h.tagline, 'tagline'];
   for (const s of resume.sections || []) {
+    if (s.hidden) continue;
     for (const it of s.items || []) {
-      for (const f of ['heading', 'org', 'location', 'dates', 'detail']) {
+      if (it.hidden) continue;
+      for (const f of ['heading', 'org', 'location', 'dates', 'detail', 'note']) {
         if (it[f]) yield [`${s.id}.${it.id}.${f}`, it[f], f];
       }
       for (let i = 0; i < (it.bullets || []).length; i++) {

@@ -15,7 +15,7 @@ after(async () => {
   await closeLayout();
 });
 
-const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+const post = (p, body = {}) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
 
 test('full flow: create session, draft, format switch, manual edit, exports', async () => {
   const { body: s } = await post('/api/sessions', { buildMode: 'talk', template: 'iitb', pages: 1 });
@@ -39,6 +39,16 @@ test('full flow: create session, draft, format switch, manual edit, exports', as
 
   const bad = await post(`/api/sessions/${s.id}/edit`, { path: 'nope.x.y', value: 'z' });
   assert.equal(bad.status, 400);
+
+  // Undo the manual edit, then the format switch; redo the edit.
+  const u1 = await post(`/api/sessions/${s.id}/undo`);
+  assert.equal(u1.body.resume.sections.find((x) => x.kind === 'experience').items[0].dates, 'Jul 2023 – Present');
+  assert.equal(u1.body.canRedo, true);
+  const u2 = await post(`/api/sessions/${s.id}/undo`);
+  assert.equal(u2.body.resume.settings.template, 'iitb');
+  const r1 = await post(`/api/sessions/${s.id}/redo`);
+  assert.equal(r1.body.resume.settings.template, 'hbs');
+  if (r1.body.layout) assert.equal(typeof r1.body.layout.pages, 'number');
 
   const docx = await fetch(`${base}/api/sessions/${s.id}/export.docx`);
   assert.equal(docx.status, 200);

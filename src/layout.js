@@ -1,12 +1,25 @@
-// Server-side rendering with headless Chromium: page-fit measurement and PDF
-// export. Both use shared/render.js, the same renderer as the browser preview.
+// Server-side rendering in headless Chromium. Runs the same document and the
+// same in-page layout engine (shared/render.js) as the browser preview, so the
+// page count, page breaks and QA results the model sees are the ones the user sees.
 //
 // Playwright is optional. Without it, measurement returns null and PDF export
-// reports itself unavailable (the client falls back to the browser's print dialog).
+// reports itself unavailable (the client then uses the browser's print dialog).
 
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderResume } from '../shared/render.js';
-import { printableHeightPx } from '../shared/templates.js';
+
+const fontDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'fonts');
+const fontCache = new Map();
+// setContent() pages have no origin to fetch /fonts from, so fonts are inlined.
+const dataFontUrl = (file) => {
+  if (!fontCache.has(file)) {
+    fontCache.set(file, `data:font/woff2;base64,${readFileSync(path.join(fontDir, file)).toString('base64')}`);
+  }
+  return fontCache.get(file);
+};
 
 let browserPromise = null;
 
@@ -34,60 +47,57 @@ export async function layoutAvailable() {
   }
 }
 
-function countPdfPages(buf) {
-  // Count page objects. Chromium's PDFs are uncompressed at this level.
+export function countPdfPages(buf) {
   const s = buf.toString('latin1');
   return (s.match(/\/Type\s*\/Page(?!s)/g) || []).length;
 }
 
-async function withPage(fn) {
+async function withLaidOutPage(resume, fn) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    return await fn(page);
+    await page.emulateMedia({ media: 'print' });
+    await page.setContent(renderResume(resume, { fontUrl: dataFontUrl }), { waitUntil: 'load' });
+    const layout = await page.evaluate(() => window.__layoutPromise);
+    return await fn(page, layout);
   } finally {
     await page.close();
   }
 }
 
 export async function renderPdf(resume) {
-  return withPage(async (page) => {
-    await page.setContent(renderResume(resume), { waitUntil: 'load' });
+  return withLaidOutPage(resume, async (page, layout) => {
     const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-    return { pdf, pages: countPdfPages(pdf) };
+    const pages = countPdfPages(pdf);
+    if (pages !== layout.pages) {
+      layout.issues.push({ level: 'error', code: 'pdf-mismatch', message: `The PDF has ${pages} pages but the layout produced ${layout.pages}.`, path: '' });
+    }
+    return { pdf, pages, layout };
   });
 }
 
 /**
- * Measure how the resume fits its page limit.
- * @returns {Promise<null | {pages:number, limit:number, fits:boolean, fill:number, message:string}>}
+ * Lay the resume out and run visual QA.
+ * @returns {Promise<null | {pages, limit, fits, level, overflow, baseOverflow, lastPageFill, issues, message}>}
  */
-export async function measureFit(resume) {
-  if (!resume.sections?.length) return null;
+export async function measureLayout(resume) {
+  if (!resume.sections?.some((s) => !s.hidden && s.items?.some((i) => !i.hidden))) return null;
   try {
-    return await withPage(async (page) => {
-      // Width matches the printable area so line wrapping is identical to print.
-      await page.setContent(renderResume(resume), { waitUntil: 'load' });
-      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-      const pages = countPdfPages(pdf);
-      await page.emulateMedia({ media: 'print' });
-      const heightPx = await page.evaluate(() => document.getElementById('sheet').getBoundingClientRect().height);
-      const limit = resume.settings.pages;
-      const fill = heightPx / (printableHeightPx(resume.settings.template) * limit);
-      let message;
-      if (pages > limit) {
-        message = `Overflows: renders to ${pages} pages against a ${limit}-page limit (about ${Math.round((fill - 1) * 100)}% too long). Cut lower-priority content; do not shrink the text.`;
-      } else if (limit === 2 && fill < 0.6) {
-        message = `Fits, but uses only about ${Math.round(fill * 200)}% of one page's worth of space across two pages. The material may suit one page better.`;
-      } else {
-        message = `Fits: ${pages} of ${limit} page(s), about ${Math.round(Math.min(fill, 1) * 100)}% of the available space used.`;
-      }
-      return { pages, limit, fits: pages <= limit, fill: Number(fill.toFixed(3)), message };
-    });
+    return await withLaidOutPage(resume, async (_page, layout) => ({ ...layout, message: describeFit(layout) }));
   } catch (err) {
-    if (process.env.DEBUG) console.error('measureFit failed:', err);
+    if (process.env.DEBUG) console.error('measureLayout failed:', err);
     return null;
   }
+}
+
+export function describeFit(l) {
+  if (!l) return 'Layout not measured.';
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  if (!l.fits) {
+    return `Overflows: ${l.pages} pages against a ${l.limit}-page limit, about ${pct(l.overflow)} of a page too long. Shorten or hide lower-priority content (set_visibility, or move bullets to reserve_bullets). Do not rely on smaller text.`;
+  }
+  const tight = l.level ? ` Spacing was tightened (level ${l.level}) to absorb a ${pct(l.baseOverflow)} overflow; trimming a line or two would restore normal spacing.` : '';
+  return `Fits: ${l.pages} of ${l.limit} page(s); last page ${pct(l.lastPageFill)} full.${tight}`;
 }
 
 export async function closeLayout() {

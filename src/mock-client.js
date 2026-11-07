@@ -52,7 +52,7 @@ function lastUserText(messages) {
   const m = messages[messages.length - 1];
   if (typeof m.content === 'string') return m.content;
   return m.content
-    .filter((b) => b.type === 'text' && !b.text.startsWith('<resume_state>'))
+    .filter((b) => b.type === 'text' && !b.text.startsWith('<resume_state>') && !b.text.startsWith('(App note'))
     .map((b) => b.text)
     .join(' ');
 }
@@ -80,6 +80,12 @@ export const mockClient = {
             [
               { type: 'text', text: '(mock) Here is a first draft using sample data.' },
               { type: 'tool_use', id: id(), name: 'create_resume', input: SAMPLE },
+              {
+                type: 'tool_use',
+                id: id(),
+                name: 'set_profile',
+                input: { job_families: ['Software Engineering'], current_role: 'Software Engineer', years_experience: '1', industry: 'Logistics', specialization: 'Backend', career_stage: 'early', target_role: '' },
+              },
             ],
             'tool_use',
           );
@@ -87,7 +93,7 @@ export const mockClient = {
         const fmt = text.match(/\b(iitb|iima|hbs)\b/);
         const pages = /two page|2 page/.test(text) ? 2 : /one page|1 page/.test(text) ? 1 : null;
         if (fmt || pages) {
-          const cur = state.match(/\(id (\w+)\)\. Page limit: (\d)/);
+          const cur = state.match(/\(id (\w+)\), \w+ paper\. Page limit: (\d)/);
           return msg(
             [{ type: 'tool_use', id: id(), name: 'set_format', input: { template: fmt ? fmt[1] : cur[1], pages: pages || Number(cur[2]) } }],
             'tool_use',

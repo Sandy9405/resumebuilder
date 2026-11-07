@@ -14,10 +14,16 @@ const ITEM = {
     org: { type: 'string', description: 'Company, institution or organisation. "" if none.' },
     location: S,
     dates: { type: 'string', description: 'As the user gave them, e.g. "Jun 2022 – Present" or "2019 – 2023"' },
-    detail: { type: 'string', description: 'One line: CPI/GPA/percentage, tech stack, or comma-separated skills' },
-    bullets: { type: 'array', items: S, description: 'Action–Project–Result bullets. [] if none.' },
+    detail: { type: 'string', description: 'One line: CPI/GPA/percentage for education, tech stack or guide for projects, comma-separated list for skills' },
+    note: { type: 'string', description: 'Education only: board/university (IITB table) or distinction such as "Institute Gold Medal" (IIMA table). Otherwise "".' },
+    bullets: { type: 'array', items: S, description: 'Action–Project–Result bullets shown on the resume. [] if none.' },
+    reserve_bullets: {
+      type: 'array',
+      items: S,
+      description: 'Accurate bullets kept in the user\'s data but not shown at the current page limit. Move bullets here instead of deleting them when cutting for length; bring them back for a longer version.',
+    },
   },
-  required: ['heading', 'org', 'location', 'dates', 'detail', 'bullets'],
+  required: ['heading', 'org', 'location', 'dates', 'detail', 'note', 'bullets', 'reserve_bullets'],
   additionalProperties: false,
 };
 
@@ -30,8 +36,13 @@ const HEADER = {
     phone: S,
     location: S,
     links: { type: 'array', items: S, description: 'LinkedIn, GitHub, portfolio URLs' },
+    details: {
+      type: 'array',
+      items: S,
+      description: 'Short header facts the user supplied, e.g. roll number, programme, institute (IITB header column). Never add age, gender or other personal data the user did not give.',
+    },
   },
-  required: ['name', 'tagline', 'email', 'phone', 'location', 'links'],
+  required: ['name', 'tagline', 'email', 'phone', 'location', 'links', 'details'],
   additionalProperties: false,
 };
 
@@ -86,7 +97,29 @@ export const TOOLS = [
     'Replace one entry. Send the full item, copying unchanged fields and bullets exactly from <resume_state>.',
     { section_id: S, item_id: S, item: ITEM },
   ),
-  tool('remove_item', 'Delete one entry.', { section_id: S, item_id: S }),
+  tool('remove_item', 'Delete one entry permanently. Only when the user asks. To cut for length, use set_visibility instead.', { section_id: S, item_id: S }),
+  tool(
+    'set_visibility',
+    'Hide or show an entry (or a whole section when item_id is "") without deleting it. Use to fit the page limit; hidden content reappears when the user wants a longer version.',
+    { section_id: S, item_id: S, hidden: { type: 'boolean' } },
+  ),
+  tool(
+    'set_profile',
+    'Record your reading of the user\'s professional profile. Call it once you understand their background, and again when it changes (e.g. a new target role). Drives which questions you ask and what the resume prioritises.',
+    {
+      job_families: {
+        type: 'array',
+        items: S,
+        description: 'One to three, most relevant first, e.g. "Software Engineering", "Product Management", "Consulting / Strategy", or another profession in plain words.',
+      },
+      current_role: S,
+      years_experience: { type: 'string', description: 'e.g. "0 (final-year student)", "3", "12+". "" if unknown.' },
+      industry: S,
+      specialization: S,
+      career_stage: { type: 'string', enum: ['student', 'early', 'mid', 'experienced', 'senior', ''] },
+      target_role: { type: 'string', description: 'Only if the user stated one. "" otherwise.' },
+    },
+  ),
   tool('set_format', 'Switch template and/or page count, only when the user asks. Send both values.', {
     template: { type: 'string', enum: ['iitb', 'iima', 'hbs'] },
     pages: { type: 'integer', enum: [1, 2] },

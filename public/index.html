@@ -42,6 +42,7 @@
     <section class="chat" aria-label="Conversation">
       <header class="chat-head">
         <b>Resume Builder</b>
+        <span id="profileChip" class="chip" hidden></span>
         <button id="newBtn" class="ghost small" title="Start over">New resume</button>
       </header>
       <div id="messages" class="messages" aria-live="polite"></div>
@@ -51,6 +52,10 @@
           Upload your CV
         </label>
         <span class="hint">PDF, DOCX or TXT, up to 15 MB</span>
+      </div>
+      <div class="quick">
+        <button type="button" id="skipBtn" class="ghost small" title="Skip the current question">Skip question</button>
+        <button type="button" id="finishBtn" class="ghost small" title="Stop the interview and finalise">I'm done, finish it</button>
       </div>
       <form id="composer" class="composer">
         <button type="button" id="micBtn" class="mic" title="Speak" aria-pressed="false">🎤</button>
@@ -69,17 +74,19 @@
         <select id="pagesSel" aria-label="Length"><option value="1">1 page</option><option value="2">2 pages</option></select>
         <span id="fitBadge" class="badge" hidden></span>
         <span class="spacer"></span>
+        <button id="undoBtn" class="ghost icon" title="Undo (Ctrl+Z)" disabled>↶</button>
+        <button id="redoBtn" class="ghost icon" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
         <label class="toggle"><input type="checkbox" id="editToggle"> Edit text</label>
         <button id="checksBtn" class="ghost">Checks <span id="checksCount" class="count">0</span></button>
         <button id="pdfBtn" class="primary">PDF</button>
         <button id="docxBtn" class="ghost">DOCX</button>
       </div>
       <div id="checksPanel" class="checks" hidden></div>
+      <div id="hiddenNote" class="hidden-note" hidden></div>
       <div class="stage" id="stage">
         <div id="empty" class="empty">Your resume will appear here as soon as there's enough for a first draft.</div>
         <div id="paper" class="paper" hidden>
           <iframe id="frame" title="Resume preview"></iframe>
-          <div id="breaks" class="breaks" aria-hidden="true"></div>
         </div>
       </div>
       <p class="spec-note">Formats are the product's design templates, not official institutional templates.</p>

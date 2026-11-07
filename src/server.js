@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 import mammoth from 'mammoth';
 import { extractText, getDocumentProxy } from 'unpdf';
 
-import { emptyResume, applyOp, applyManualEdit, OpError } from './ops.js';
+import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume } from '../shared/lint.js';
-import { measureFit, renderPdf, layoutAvailable } from './layout.js';
+import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
 import { renderDocx } from './docx.js';
 import { renderResume } from '../shared/render.js';
 
@@ -29,9 +29,12 @@ function view(s) {
   return {
     id: s.id,
     resume: s.resume,
-    fit: s.fit,
+    layout: s.layout,
+    // Content checks only; visual QA lives in layout (the browser recomputes it live).
     issues: lintResume(s.resume, s.sourceText),
     chat: s.chat,
+    canUndo: s.undo.length > 0,
+    canRedo: s.redo.length > 0,
   };
 }
 
@@ -96,7 +99,10 @@ export function createApp({ client } = {}) {
       messages: [],
       chat: [{ role: 'assistant', text: opener }],
       sourceText: '',
-      fit: null,
+      layout: null,
+      undo: [],
+      redo: [],
+      pendingNotes: [],
       busy: false,
       touched: Date.now(),
     };
@@ -158,6 +164,7 @@ export function createApp({ client } = {}) {
   // Direct edits typed into the preview. User-typed text counts as source material.
   app.post('/api/sessions/:id/edit', getSession, async (req, res) => {
     const { path: p, value } = req.body || {};
+    const before = snapshot(req.s.resume);
     try {
       applyManualEdit(req.s.resume, String(p || ''), value);
     } catch (err) {
@@ -165,28 +172,44 @@ export function createApp({ client } = {}) {
       throw err;
     }
     req.s.sourceText += `\n${value}`;
-    req.s.fit = await measureFit(req.s.resume);
+    if (pushHistory(req.s, before)) req.s.pendingNotes.push(`The user edited the text directly at ${p}. Treat the new wording as theirs.`);
+    req.s.layout = await measureLayout(req.s.resume);
     res.json(view(req.s));
   });
 
   // Template / page toggles from the toolbar: no model call needed.
   app.post('/api/sessions/:id/format', getSession, async (req, res) => {
     const r = req.s.resume;
+    const before = snapshot(r);
     applyOp(r, 'set_format', {
       template: req.body?.template || r.settings.template,
       pages: Number(req.body?.pages) || r.settings.pages,
     });
-    req.s.fit = await measureFit(r);
+    if (pushHistory(req.s, before)) {
+      req.s.pendingNotes.push(`The user switched the format to ${r.settings.template.toUpperCase()}, ${r.settings.pages} page(s), from the toolbar.`);
+    }
+    req.s.layout = await measureLayout(r);
     res.json(view(req.s));
   });
+
+  for (const [route, fn, verb] of [['undo', undo, 'undid'], ['redo', redo, 'redid']]) {
+    app.post(`/api/sessions/:id/${route}`, getSession, async (req, res) => {
+      if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+      if (!fn(req.s)) return res.status(400).json({ error: `Nothing to ${route}.` });
+      req.s.pendingNotes.push(`The user ${verb} a change. The resume state below is now current; do not reapply the reverted change unless asked.`);
+      req.s.layout = await measureLayout(req.s.resume);
+      res.json(view(req.s));
+    });
+  }
 
   const fileBase = (s) => (s.resume.header.name || 'resume').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'resume';
 
   app.get('/api/sessions/:id/export.pdf', getSession, async (req, res) => {
     if (!req.s.resume.sections.length) return res.status(400).json({ error: 'Nothing to export yet.' });
     if (!(await layoutAvailable())) return res.status(501).json({ error: 'PDF export is not available on this server.' });
-    const { pdf, pages } = await renderPdf(req.s.resume);
+    const { pdf, pages, layout } = await renderPdf(req.s.resume);
     res.set('X-Page-Count', String(pages));
+    res.set('X-Page-Limit', String(layout.limit));
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', `attachment; filename="${fileBase(req.s)}.pdf"`);
     res.send(pdf);

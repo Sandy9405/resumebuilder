@@ -1,5 +1,5 @@
 import { renderResume } from '/shared/render.js';
-import { TEMPLATES, getTemplate, PAGE, MM_TO_PX, printableHeightPx } from '/shared/templates.js';
+import { TEMPLATES, getTemplate, MM_TO_PX } from '/shared/templates.js';
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -10,6 +10,7 @@ const store = {
 
 let S = null; // current session view from the server
 let busy = false;
+let liveLayout = null; // layout + visual QA computed by the preview itself
 
 // ---------- API ----------
 async function api(path, opts = {}) {
@@ -189,75 +190,97 @@ function render() {
   $('#pagesSel').value = String(r.settings.pages);
   const needsUpload = r.settings.buildMode !== 'talk' && !r.sections.length;
   $('#uploadZone').hidden = !needsUpload;
+  $('#undoBtn').disabled = !S.canUndo;
+  $('#redoBtn').disabled = !S.canRedo;
+  renderProfile();
+  renderHiddenNote();
   renderPreview();
   renderChecks();
 }
 
-function renderPreview() {
-  const r = S.resume;
-  const has = r.sections.some((s) => s.items.length);
-  $('#empty').hidden = has;
-  $('#paper').hidden = !has;
-  if (!has) return;
-
-  const t = getTemplate(r.settings.template);
-  const m = t.marginsMm;
-  const paper = $('#paper');
-  paper.style.padding = `${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm`;
-  paper.style.width = `${PAGE.widthMm}mm`;
-  const frame = $('#frame');
-  frame.style.width = `${PAGE.widthMm - m.left - m.right}mm`;
-
-  const editable = $('#editToggle').checked;
-  frame.onload = () => {
-    const doc = frame.contentDocument;
-    const h = doc.getElementById('sheet').getBoundingClientRect().height;
-    frame.style.height = `${Math.ceil(h) + 2}px`;
-    drawBreaks(h);
-    if (editable) wireEditing(doc);
-    fitScale();
-  };
-  frame.srcdoc = renderResume(r, { editable });
+const STAGES = { student: 'Student / fresher', early: 'Early career', mid: 'Mid-level', experienced: 'Experienced', senior: 'Senior' };
+function renderProfile() {
+  const p = S.resume.profile || {};
+  const parts = [(p.jobFamilies || []).join(' / '), STAGES[p.careerStage], p.targetRole && `→ ${p.targetRole}`].filter(Boolean);
+  $('#profileChip').hidden = !parts.length;
+  $('#profileChip').textContent = parts.join(' · ');
+  $('#profileChip').title = 'How the assistant reads your background. Tell it if this is wrong.';
 }
 
-function drawBreaks(contentH) {
-  const r = S.resume;
-  const t = getTemplate(r.settings.template);
-  const pageH = printableHeightPx(r.settings.template);
-  const pagesUsed = Math.max(1, Math.ceil(contentH / pageH));
-  const totalH = pageH * Math.max(pagesUsed, r.settings.pages);
-  $('#frame').style.minHeight = `${totalH}px`;
-  const breaks = $('#breaks');
-  breaks.innerHTML = '';
-  for (let i = 1; i < Math.max(pagesUsed, r.settings.pages) + 1; i++) {
-    const line = document.createElement('div');
-    line.className = i === r.settings.pages ? 'break limit' : 'break';
-    line.style.top = `${t.marginsMm.top * MM_TO_PX + pageH * i}px`;
-    line.dataset.label = i === r.settings.pages ? `Page limit (${r.settings.pages})` : `Page ${i} ends`;
-    breaks.appendChild(line);
+function renderHiddenNote() {
+  const hidden = [];
+  let reserved = 0;
+  for (const s of S.resume.sections) {
+    if (s.hidden) hidden.push(s.title);
+    for (const it of s.items) {
+      if (!s.hidden && it.hidden) hidden.push(it.org || it.heading);
+      reserved += (it.reserve || []).length;
+    }
   }
-  // Prefer the server's PDF-based measurement; fall back to the on-screen estimate.
-  const fit = S.fit || { fits: contentH <= pageH * r.settings.pages, pages: pagesUsed, limit: r.settings.pages, fill: contentH / (pageH * r.settings.pages) };
+  const parts = [];
+  if (hidden.length) parts.push(`${hidden.length} hidden for length (${hidden.slice(0, 3).join(', ')}${hidden.length > 3 ? '…' : ''})`);
+  if (reserved) parts.push(`${reserved} extra bullet${reserved > 1 ? 's' : ''} kept in reserve`);
+  $('#hiddenNote').hidden = !parts.length;
+  $('#hiddenNote').textContent = parts.length ? `Not shown at this length but kept: ${parts.join('; ')}. Ask to bring anything back, or switch to two pages.` : '';
+}
+
+let renderSeq = 0;
+function renderPreview() {
+  const r = S.resume;
+  const has = r.sections.some((s) => !s.hidden && s.items.some((i) => !i.hidden));
+  $('#empty').hidden = has;
+  $('#paper').hidden = !has;
+  if (!has) {
+    liveLayout = null;
+    $('#fitBadge').hidden = true;
+    return;
+  }
+  const t = getTemplate(r.settings.template);
+  const frame = $('#frame');
+  const editable = $('#editToggle').checked;
+  const seq = ++renderSeq;
+  frame.style.width = `${Math.ceil(t.page.widthMm * MM_TO_PX) + 24}px`;
+  frame.onload = async () => {
+    const win = frame.contentWindow;
+    const layout = await win.__layoutPromise;
+    if (seq !== renderSeq) return; // a newer render started
+    liveLayout = layout;
+    frame.style.height = `${win.document.documentElement.scrollHeight}px`;
+    if (editable) wireEditing(win.document);
+    fitScale();
+    renderBadge();
+    renderChecks();
+  };
+  frame.srcdoc = renderResume(r, { editable, screen: true });
+}
+
+function renderBadge() {
+  const l = liveLayout;
   const b = $('#fitBadge');
+  if (!l) return void (b.hidden = true);
   b.hidden = false;
-  b.className = `badge ${fit.fits ? 'ok' : 'bad'}`;
-  b.textContent = fit.fits
-    ? `Fits ${fit.limit} page${fit.limit > 1 ? 's' : ''}`
-    : `Over by ~${Math.max(1, Math.round((fit.fill - 1) * 100))}%`;
-  b.title = S.fit?.message || 'Estimated from the on-screen preview.';
+  b.className = `badge ${l.fits ? (l.level ? 'tight' : 'ok') : 'bad'}`;
+  b.textContent = l.fits
+    ? `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · spacing tightened' : ''}`
+    : `${l.pages} pages · over limit`;
+  b.title = l.fits
+    ? l.level
+      ? `Fits after a small spacing adjustment (level ${l.level}); text size is unchanged or within 0.5pt.`
+      : `Fits; the last page is ${Math.round(l.lastPageFill * 100)}% full.`
+    : `About ${Math.round(l.overflow * 100)}% of a page too long. Ask the assistant to tighten it.`;
 }
 
 function fitScale() {
   const stage = $('#stage');
   const paper = $('#paper');
-  const avail = stage.clientWidth - 24;
-  const w = PAGE.widthMm * MM_TO_PX;
-  const scale = Math.min(1, avail / w);
+  const frame = $('#frame');
+  const w = frame.offsetWidth;
+  const scale = Math.min(1, (stage.clientWidth - 8) / w);
   // Scale from the top-left and centre manually: a fixed-width box wider than
   // its container can't be centred with margin:auto.
   paper.style.transform = `scale(${scale})`;
   paper.style.marginLeft = `${Math.max(0, (stage.clientWidth - w * scale) / 2)}px`;
-  paper.style.marginBottom = `${-(1 - scale) * paper.offsetHeight}px`;
+  paper.style.marginBottom = `${-(1 - scale) * frame.offsetHeight}px`;
 }
 window.addEventListener('resize', () => S && !$('#paper').hidden && fitScale());
 
@@ -281,11 +304,27 @@ function wireEditing(doc) {
   });
 }
 
+async function history(kind) {
+  if (busy) return;
+  try {
+    applyView(await api(`/api/sessions/${S.id}/${kind}`, { method: 'POST' }));
+  } catch (err) {
+    addBubble('error', err.message);
+  }
+}
+
 // ---------- Checks ----------
+function allIssues() {
+  const visual = liveLayout?.issues || S.layout?.issues || [];
+  const rank = { error: 0, warn: 1, info: 2 };
+  return [...visual, ...(S.issues || [])].sort((a, b) => rank[a.level] - rank[b.level]);
+}
+
 function renderChecks() {
-  const issues = S.issues || [];
-  $('#checksCount').textContent = issues.length;
-  $('#checksCount').className = `count ${issues.some((i) => i.level === 'error') ? 'err' : issues.length ? 'warn' : ''}`;
+  const issues = allIssues();
+  const serious = issues.filter((i) => i.level !== 'info');
+  $('#checksCount').textContent = serious.length + (issues.length > serious.length ? `+${issues.length - serious.length}` : '');
+  $('#checksCount').className = `count ${issues.some((i) => i.level === 'error') ? 'err' : serious.length ? 'warn' : ''}`;
   const panel = $('#checksPanel');
   panel.innerHTML = issues.length
     ? `<ul>${issues.map((i, n) => `<li class="${i.level}" data-n="${n}"><b>${label(i.code)}</b> ${escapeHtml(i.message)}</li>`).join('')}</ul>`
@@ -296,18 +335,24 @@ function renderChecks() {
 }
 
 const label = (c) =>
-  ({ 'unverified-number': 'Unverified number', 'ai-language': 'Generic wording', 'first-person': 'First person', 'repeated-verb': 'Repeated verb', duplicate: 'Duplicate', placeholder: 'Placeholder' })[c] || c;
+  ({
+    'unverified-number': 'Unverified number', 'ai-language': 'Generic wording', 'first-person': 'First person',
+    'repeated-verb': 'Repeated verb', duplicate: 'Duplicate', placeholder: 'Placeholder',
+    'over-limit': 'Too long', 'outside-boundary': 'Outside margins', overlap: 'Overlap', 'date-collision': 'Date collision',
+    'date-misaligned': 'Date alignment', 'indent-inconsistent': 'Indentation', 'orphan-heading': 'Page break',
+    'blank-page': 'Blank page', 'table-overflow': 'Table', justified: 'Word spacing', 'font-fallback': 'Font',
+    'long-bullet': 'Long bullet', 'marker-misaligned': 'Bullet alignment', 'widow-word': 'Lone word', 'sparse-page': 'Length', 'pdf-mismatch': 'PDF',
+  })[c] || c;
 
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 function highlight(path) {
+  if (!path) return;
   const doc = $('#frame').contentDocument;
-  const [sec, item, field, n] = path.split('.');
-  let el = doc.querySelector(`[data-path="${CSS.escape(path)}"]`);
-  if (!el && item) {
-    const lis = doc.querySelectorAll(`section[data-section="${CSS.escape(sec)}"] li`);
-    el = field === 'bullets' ? [...lis][Number(n)] : doc.querySelector(`section[data-section="${CSS.escape(sec)}"]`);
-  }
+  const el =
+    doc.querySelector(`[data-path="${CSS.escape(path)}"]`) ||
+    doc.querySelector(`[data-item="${CSS.escape(path.split('.').slice(0, 2).join('.'))}"]`) ||
+    doc.querySelector(`[data-sec="${CSS.escape(path.split('.')[0])}"]`);
   if (!el) return;
   el.scrollIntoView({ block: 'center' });
   el.style.background = '#fff3b0';
@@ -316,14 +361,9 @@ function highlight(path) {
 
 // ---------- Export ----------
 function confirmExport() {
-  const issues = S.issues || [];
-  const serious = issues.filter((i) => i.level === 'error' || i.code === 'unverified-number');
-  const fitProblem = S.fit && !S.fit.fits;
-  if (!serious.length && !fitProblem) return true;
-  const lines = [
-    ...(fitProblem ? [`• ${S.fit.message}`] : []),
-    ...serious.slice(0, 8).map((i) => `• ${i.message}`),
-  ];
+  const serious = allIssues().filter((i) => i.level === 'error' || i.code === 'unverified-number' || i.code === 'placeholder');
+  if (!serious.length) return true;
+  const lines = serious.slice(0, 8).map((i) => `• ${i.message}`);
   return confirm(`Before you export, please check:\n\n${lines.join('\n')}\n\nExport anyway?`);
 }
 
@@ -340,7 +380,7 @@ async function download(kind) {
     return;
   }
   const pages = res.headers.get('X-Page-Count');
-  if (pages && Number(pages) > S.resume.settings.pages) {
+  if (kind === 'pdf' && pages && Number(pages) > S.resume.settings.pages) {
     addBubble('error', `Heads up: the PDF came out at ${pages} pages, over your ${S.resume.settings.pages}-page limit. Ask me to tighten it.`);
   }
   const blob = await res.blob();
@@ -366,6 +406,16 @@ async function boot() {
   $('#templateSel').addEventListener('change', async (e) => applyView(await api(`/api/sessions/${S.id}/format`, { method: 'POST', body: { template: e.target.value } })));
   $('#pagesSel').addEventListener('change', async (e) => applyView(await api(`/api/sessions/${S.id}/format`, { method: 'POST', body: { pages: Number(e.target.value) } })));
   $('#editToggle').addEventListener('change', renderPreview);
+  $('#undoBtn').addEventListener('click', () => history('undo'));
+  $('#redoBtn').addEventListener('click', () => history('redo'));
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || !S) return;
+    if (e.target.closest?.('textarea, input, [contenteditable]')) return;
+    e.preventDefault();
+    history(e.shiftKey ? 'redo' : 'undo');
+  });
+  $('#skipBtn').addEventListener('click', () => send("Skip this one, I don't have that detail."));
+  $('#finishBtn').addEventListener('click', () => send("That's everything I have for now. Please finish the resume and run your final checks."));
   $('#checksBtn').addEventListener('click', () => ($('#checksPanel').hidden = !$('#checksPanel').hidden));
   $('#pdfBtn').addEventListener('click', () => download('pdf'));
   $('#docxBtn').addEventListener('click', () => download('docx'));

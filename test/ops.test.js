@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyResume, applyOp, applyManualEdit, OpError } from '../src/ops.js';
+import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo } from '../src/ops.js';
 
-const item = (o = {}) => ({ heading: '', org: '', location: '', dates: '', detail: '', bullets: [], ...o });
+const item = (o = {}) => ({ heading: '', org: '', location: '', dates: '', detail: '', note: '', bullets: [], reserve_bullets: [], ...o });
 
 function draft() {
   const r = emptyResume({ template: 'hbs', pages: 1 });
@@ -20,7 +20,7 @@ function draft() {
 
 test('create_resume orders sections by template', () => {
   const r = draft();
-  assert.deepEqual(r.sections.map((s) => s.kind), ['education', 'experience', 'skills']);
+  assert.deepEqual(r.sections.map((s) => s.kind), ['experience', 'education', 'skills']);
   assert.ok(r.sections.every((s) => s.id && s.items.every((i) => i.id)));
 });
 
@@ -64,6 +64,8 @@ test('move_section and set_format', () => {
   assert.equal(r.settings.template, 'iitb');
   assert.equal(r.settings.pages, 2);
   assert.equal(r.sections[0].kind, 'education', 'switching template re-applies its order');
+  applyOp(r, 'set_format', { template: 'hbs', pages: 2 });
+  assert.equal(r.sections[0].kind, 'experience', 'HBS leads with experience');
 });
 
 test('manual edits: field, bullet, and deleting a bullet by clearing it', () => {
@@ -77,4 +79,44 @@ test('manual edits: field, bullet, and deleting a bullet by clearing it', () => 
   applyManualEdit(r, `${exp.id}.${it.id}.bullets.0`, '');
   assert.deepEqual(it.bullets, []);
   assert.throws(() => applyManualEdit(r, `${exp.id}.${it.id}.id`, 'x'), OpError);
+});
+
+test('set_visibility hides without deleting; reserve bullets survive updates', () => {
+  const r = draft();
+  const exp = r.sections.find((s) => s.kind === 'experience');
+  const it = exp.items[0];
+  applyOp(r, 'update_item', { section_id: exp.id, item_id: it.id, item: item({ org: 'Acme', heading: 'Engineer', bullets: ['Built X'], reserve_bullets: ['Wrote Y'] }) });
+  applyOp(r, 'set_visibility', { section_id: exp.id, item_id: it.id, hidden: true });
+  assert.equal(exp.items[0].hidden, true);
+  assert.deepEqual(exp.items[0].reserve, ['Wrote Y']);
+  // A later update that doesn't touch visibility keeps the item hidden.
+  applyOp(r, 'update_item', { section_id: exp.id, item_id: it.id, item: item({ org: 'Acme', heading: 'Engineer', bullets: ['Built X'], reserve_bullets: ['Wrote Y'] }) });
+  assert.equal(exp.items[0].hidden, true);
+  applyOp(r, 'set_visibility', { section_id: exp.id, item_id: '', hidden: true });
+  assert.equal(exp.hidden, true);
+  assert.equal(exp.items.length, 1, 'nothing deleted');
+});
+
+test('set_profile validates the career stage', () => {
+  const r = draft();
+  applyOp(r, 'set_profile', { job_families: ['Software Engineering', 'Data Science'], current_role: 'SDE', years_experience: '3', industry: 'Fintech', specialization: 'Backend', career_stage: 'early', target_role: '' });
+  assert.deepEqual(r.profile.jobFamilies, ['Software Engineering', 'Data Science']);
+  assert.equal(r.profile.careerStage, 'early');
+  applyOp(r, 'set_profile', { job_families: [], current_role: '', years_experience: '', industry: '', specialization: '', career_stage: 'wizard', target_role: '' });
+  assert.equal(r.profile.careerStage, '');
+});
+
+test('undo and redo restore exact snapshots', () => {
+  const session = { resume: draft(), undo: [], redo: [] };
+  const before = snapshot(session.resume);
+  const exp = session.resume.sections.find((s) => s.kind === 'experience');
+  applyOp(session.resume, 'remove_item', { section_id: exp.id, item_id: exp.items[0].id });
+  assert.equal(pushHistory(session, before), true);
+  const after = snapshot(session.resume);
+  assert.equal(undo(session), true);
+  assert.equal(snapshot(session.resume), before);
+  assert.equal(redo(session), true);
+  assert.equal(snapshot(session.resume), after);
+  assert.equal(pushHistory(session, snapshot(session.resume)), false, 'no-op changes are not recorded');
+  assert.equal(redo(session), false);
 });
