@@ -1,0 +1,33 @@
+{
+  "name": "resumebuilder",
+  "version": "1.0.0",
+  "description": "AI resume builder: CV upload + voice interview, IITB/IIMA/HBS templates, PDF/DOCX export",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/server.js",
+    "dev": "MOCK_CLAUDE=1 node src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sandy9405/resumebuilder.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sandy9405/resumebuilder/issues"
+  },
+  "homepage": "https://github.com/Sandy9405/resumebuilder#readme",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "docx": "^9.15.3",
+    "express": "^5.3.0",
+    "mammoth": "^1.13.0",
+    "multer": "^2.5.0",
+    "unpdf": "^1.9.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

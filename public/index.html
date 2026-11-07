@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resume Builder</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Setup: the three questions -->
+  <main id="setup" class="setup" hidden>
+    <h1>Build your resume</h1>
+    <p class="lede">Three quick choices, then we'll get to work. You can change format and length later.</p>
+
+    <fieldset>
+      <legend>1. How would you like to build your resume?</legend>
+      <div class="cards" data-name="buildMode">
+        <label class="card"><input type="radio" name="buildMode" value="upload" checked><b>Upload my existing CV</b><span>PDF, DOCX or TXT. I'll rewrite it, not just reformat it.</span></label>
+        <label class="card"><input type="radio" name="buildMode" value="talk"><b>Talk about my experience</b><span>Speak or type. I'll interview you one question at a time.</span></label>
+        <label class="card"><input type="radio" name="buildMode" value="both"><b>Upload my CV and add more by voice</b><span>Start from your CV, then fill gaps and correct details.</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. Which resume format?</legend>
+      <div class="cards" id="templateCards" data-name="template"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. How long should it be?</legend>
+      <div class="cards cards-2" data-name="pages">
+        <label class="card"><input type="radio" name="pages" value="1" checked><b>One page</b><span>Most relevant and recent work only.</span></label>
+        <label class="card"><input type="radio" name="pages" value="2"><b>Two pages</b><span>More detail, if your experience supports it. No filler.</span></label>
+      </div>
+    </fieldset>
+
+    <button id="startBtn" class="primary big">Start</button>
+  </main>
+
+  <!-- Workspace -->
+  <div id="workspace" class="workspace" hidden>
+    <section class="chat" aria-label="Conversation">
+      <header class="chat-head">
+        <b>Resume Builder</b>
+        <button id="newBtn" class="ghost small" title="Start over">New resume</button>
+      </header>
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <div id="uploadZone" class="upload-zone" hidden>
+        <label class="primary upload-btn">
+          <input id="fileInput" type="file" accept=".pdf,.docx,.txt,application/pdf" hidden>
+          Upload your CV
+        </label>
+        <span class="hint">PDF, DOCX or TXT, up to 15 MB</span>
+      </div>
+      <form id="composer" class="composer">
+        <button type="button" id="micBtn" class="mic" title="Speak" aria-pressed="false">🎤</button>
+        <textarea id="input" rows="2" placeholder="Type, or press the mic and talk…"></textarea>
+        <div class="composer-side">
+          <button type="submit" class="primary" id="sendBtn">Send</button>
+          <label class="attach" title="Upload a CV"><input id="fileInput2" type="file" accept=".pdf,.docx,.txt,application/pdf" hidden>📎</label>
+        </div>
+      </form>
+      <label class="speak-toggle"><input type="checkbox" id="speakToggle"> Read replies aloud</label>
+    </section>
+
+    <section class="preview" aria-label="Resume preview">
+      <div class="toolbar">
+        <select id="templateSel" aria-label="Format"></select>
+        <select id="pagesSel" aria-label="Length"><option value="1">1 page</option><option value="2">2 pages</option></select>
+        <span id="fitBadge" class="badge" hidden></span>
+        <span class="spacer"></span>
+        <label class="toggle"><input type="checkbox" id="editToggle"> Edit text</label>
+        <button id="checksBtn" class="ghost">Checks <span id="checksCount" class="count">0</span></button>
+        <button id="pdfBtn" class="primary">PDF</button>
+        <button id="docxBtn" class="ghost">DOCX</button>
+      </div>
+      <div id="checksPanel" class="checks" hidden></div>
+      <div class="stage" id="stage">
+        <div id="empty" class="empty">Your resume will appear here as soon as there's enough for a first draft.</div>
+        <div id="paper" class="paper" hidden>
+          <iframe id="frame" title="Resume preview"></iframe>
+          <div id="breaks" class="breaks" aria-hidden="true"></div>
+        </div>
+      </div>
+      <p class="spec-note">Formats are the product's design templates, not official institutional templates.</p>
+    </section>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
