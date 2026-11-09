@@ -40,6 +40,7 @@ function stateBlock(session) {
     `Build mode: ${r.settings.buildMode}. Format: ${t.label} (id ${t.id}), ${t.page.name} paper. Page limit: ${r.settings.pages}.`,
     `Layout: ${session.layout ? describeFit(session.layout) : 'not measured yet.'}`,
     hidden.length ? `Hidden for length (kept in data): ${hidden.join('; ')}.` : 'Hidden for length: nothing.',
+    `Career stage (user's own answer): ${{ recent: 'student or recent graduate (last two years)', working: 'working, under 5 years', experienced: '5+ years of experience, or switching jobs' }[r.settings.stage] || 'not asked'}.`,
     `Purpose: ${purposeLine(r.settings.purpose)}`,
     `Assessment: ${JSON.stringify(r.assessment || {})}`,
     `Profile: ${JSON.stringify(r.profile)}`,

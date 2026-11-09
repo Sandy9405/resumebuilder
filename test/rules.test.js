@@ -20,7 +20,7 @@ function sparse(template) {
 test('one page is filled: body text and spacing grow, name and headings do not', async (t) => {
   if (!(await layoutAvailable())) return t.skip('no headless browser');
   t.after(closeLayout);
-  for (const tpl of ['iitb', 'iima', 'hbs']) {
+  for (const tpl of ['iitb', 'iima', 'hbs', 'pro']) {
     const l = await measureLayout(sparse(tpl));
     const tp = getTemplate(tpl);
     assert.equal(l.pages, 1, tpl);
@@ -56,7 +56,7 @@ test('header links are real hyperlinks in HTML, PDF and DOCX, and are recovered 
   const html = renderResume(r);
   assert.match(html, /<a href="https:\/\/www\.linkedin\.com\/in\/priyaraman\/">linkedin\.com\/in\/priyaraman<\/a>/);
   assert.match(html, /<a href="https:\/\/priya\.dev">priya\.dev<\/a>/);
-  assert.match(html, /<a href="mailto:priya\.raman@example\.com">/);
+  assert.match(html, /<a class="mail" href="mailto:priya\.raman@example\.com">/);
 
   const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(await renderDocx(r));

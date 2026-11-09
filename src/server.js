@@ -113,13 +113,13 @@ export function createApp({ client } = {}) {
   }
 
   app.post('/api/sessions', (req, res) => {
-    const { template, pages, buildMode, purpose } = req.body || {};
+    const { template, pages, buildMode, purpose, stage } = req.body || {};
     const mode = ['upload', 'talk', 'both'].includes(buildMode) ? buildMode : 'talk';
     const opener = OPENERS[mode];
     const s = {
       id: randomUUID(),
       opener,
-      resume: emptyResume({ template, pages: Number(pages), buildMode: mode, purpose }),
+      resume: emptyResume({ template, pages: Number(pages), buildMode: mode, purpose, stage }),
       messages: [],
       chat: [{ role: 'assistant', text: opener }],
       sourceText: '',

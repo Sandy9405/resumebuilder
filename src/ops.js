@@ -17,9 +17,11 @@ export function emptyResume(settings = {}) {
       pages: settings.pages === 2 ? 2 : 1,
       buildMode: settings.buildMode || 'talk',
       purpose: cleanPurpose(settings.purpose),
+      // recent: student / graduated in the last two years; working: under 5 years; experienced: 5+ or switching.
+      stage: ['recent', 'working', 'experienced'].includes(settings.stage) ? settings.stage : '',
     },
     header: { name: '', tagline: '', email: '', phone: '', location: '', links: [], details: [] },
-    profile: emptyProfile(),
+    profile: { ...emptyProfile(), careerStage: { recent: 'student', working: 'early', experienced: 'experienced' }[settings.stage] || '' },
     target: null,
     assessment: { cv: null, fit: null },
     sections: [],

@@ -45,6 +45,16 @@ export async function renderDocx(resume) {
   const para = (children, o = {}) => new Paragraph({ ...o, children, spacing: { before: 0, after: 0, line, ...(o.spacing || {}) } });
 
   const ind = t.indentMm;
+  const col = (c) => (c ? c.replace('#', '') : undefined);
+  const ACCENT = col(t.colors?.accent);
+  const MUTED = col(t.colors?.muted);
+  const LINK = col(t.colors?.link);
+  // **bold** inline emphasis -> bold runs.
+  const richRuns = (text, o = {}) =>
+    String(text ?? '')
+      .split(/(\*\*(?=\S)[^*]+?(?<=\S)\*\*)/g)
+      .filter(Boolean)
+      .map((part) => (/^\*\*.+\*\*$/.test(part) ? run(part.slice(2, -2), { ...o, bold: true }) : run(part, o)));
   // Dates never wrap: non-breaking spaces, and a word joiner around dashes.
   const glue = (d) => d.replace(/ /g, '\u00a0').replace(/([–—-])/g, '\u2060$1\u2060');
   const datesRun = (d) =>
@@ -54,6 +64,7 @@ export async function renderDocx(resume) {
           run(glue(t.entry.datesStyle === 'italic-paren' ? `(${d})` : d), {
             bold: t.entry.datesStyle === 'bold',
             italics: t.entry.datesStyle === 'italic-paren',
+            color: t.entry.datesStyle === 'muted' ? MUTED : undefined,
           }),
         ];
 
@@ -96,23 +107,27 @@ export async function renderDocx(resume) {
   const children = [];
   const h = resume.header || {};
   // [display text, href|null]; links become real hyperlinks showing the URL.
-  const contact = [
-    h.email && [h.email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(h.email) ? `mailto:${h.email}` : null],
-    h.phone && [h.phone, null],
-    h.location && [h.location, null],
-    ...(h.links || []).filter(Boolean).map((l) => [linkLabel(l), linkHref(l)]),
-  ].filter(Boolean);
+  const parts = {
+    email: h.email ? [[h.email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(h.email) ? `mailto:${h.email}` : null, true]] : [],
+    phone: h.phone ? [[h.phone, null]] : [],
+    location: h.location ? [[h.location, null]] : [],
+    links: (h.links || []).filter(Boolean).map((l) => [linkLabel(l), linkHref(l)]),
+  };
+  const contact = (t.header.contactOrder || ['email', 'phone', 'location', 'links']).flatMap((k) => parts[k]);
   const sep = t.header.layout === 'left-rule' ? ' • ' : ' | ';
   const nameRun = run(h.name || '', {
     bold: true,
     size: hp(t.size.name),
     smallCaps: t.header.nameCase === 'small-caps',
     characterSpacing: Math.round(t.header.nameLetterSpacingPt * 20),
+    allCaps: t.header.nameCase === 'upper',
+    color: ACCENT,
   });
   const contactRuns = () =>
-    contact.flatMap(([text, href], i) => {
-      const r = run(text, { size: hp(t.size.contact) });
-      return [...(i ? [run(sep, { size: hp(t.size.contact) })] : []), href ? new ExternalHyperlink({ link: href, children: [r] }) : r];
+    contact.flatMap(([text, href, isMail], i) => {
+      const linkStyle = href && !isMail && LINK ? { color: LINK, underline: {} } : {};
+      const r = run(text, { size: hp(t.size.contact), color: MUTED, ...linkStyle });
+      return [...(i ? [run(sep, { size: hp(t.size.contact), color: MUTED })] : []), href ? new ExternalHyperlink({ link: href, children: [r] }) : r];
     });
   const contactPara = (align, border) =>
     para(contactRuns(), {
@@ -140,9 +155,12 @@ export async function renderDocx(resume) {
       }),
     );
   } else {
-    const align = t.header.layout === 'right-name' ? AlignmentType.RIGHT : AlignmentType.LEFT;
+    const align = t.header.layout === 'right-name' ? AlignmentType.RIGHT : t.header.layout === 'centered' ? AlignmentType.CENTER : AlignmentType.LEFT;
     children.push(para([nameRun], { alignment: align }));
-    if (h.tagline) children.push(para([run(h.tagline, { italics: true })], { alignment: align }));
+    if (h.tagline) {
+      const centered = t.header.layout === 'centered';
+      children.push(para([run(h.tagline, { italics: !centered, color: MUTED, size: hp(t.size.tagline || t.size.base) })], { alignment: align }));
+    }
     for (const d of details) children.push(para([run(d, { size: hp(t.size.contact) })], { alignment: align }));
     if (contact.length) children.push(contactPara(align, t.header.rule === 'solid'));
   }
@@ -154,6 +172,7 @@ export async function renderDocx(resume) {
       size: hp(t.size.heading),
       smallCaps: hs.case === 'small-caps',
       characterSpacing: Math.round(hs.letterSpacingPt * 20),
+      color: ACCENT,
     });
     const o = {
       keepNext: true,
@@ -161,6 +180,9 @@ export async function renderDocx(resume) {
       spacing: { before: sp(t.spacingPt.section) },
       alignment: hs.align === 'center' ? AlignmentType.CENTER : AlignmentType.LEFT,
     };
+    if (hs.style === 'rule-under') {
+      return para([r], { ...o, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: ACCENT || '111111', space: 1 } } });
+    }
     if (hs.style === 'band') {
       return para([r], { ...o, shading: { type: ShadingType.CLEAR, fill: hs.fill.replace('#', ''), color: 'auto' }, indent: { left: 0 } });
     }
@@ -174,7 +196,7 @@ export async function renderDocx(resume) {
   };
 
   const bulletPara = (text, before, keepNext = false) =>
-    para([run(text)], { numbering: { reference: 'bul', level: 0 }, keepLines: true, keepNext, spacing: { before } });
+    para(richRuns(text), { numbering: { reference: 'bul', level: 0 }, keepLines: true, keepNext, spacing: { before } });
   const statementNumbering = t.entry.marker ? { reference: 'entry', level: 0 } : { reference: 'bul', level: 0 };
 
   for (const sec of resume.sections || []) {
@@ -233,7 +255,7 @@ export async function renderDocx(resume) {
 
     if (sec.kind === 'summary') {
       items.forEach((it, i) => {
-        if (it.detail) children.push(para([run(it.detail)], { spacing: { before: sp(i === 0 ? t.spacingPt.headingAfter : t.spacingPt.entry) } }));
+        if (it.detail) children.push(para(richRuns(it.detail), { spacing: { before: sp(i === 0 ? t.spacingPt.headingAfter : t.spacingPt.entry) } }));
         for (const b of it.bullets || []) children.push(bulletPara(b, sp(t.spacingPt.bullet)));
       });
       continue;
@@ -250,7 +272,15 @@ export async function renderDocx(resume) {
       }
       let left;
       let line2 = null;
-      if (t.entry.style === 'iitb') {
+      const edu = sec.kind === 'education';
+      if (t.entry.style === 'pro') {
+        const titleSize = edu ? base : hp(t.size.title || t.size.base);
+        left = [
+          ...(it.heading ? [run(it.heading, { bold: true, size: titleSize })] : []),
+          ...(it.org ? [run(it.heading ? ' · ' : '', { color: MUTED, size: titleSize }), run(it.org, { color: MUTED, size: titleSize, bold: !it.heading })] : []),
+          ...loc,
+        ];
+      } else if (t.entry.style === 'iitb') {
         left = [
           ...(it.heading ? [run(it.heading, { bold: true })] : []),
           ...(it.org ? [run(it.heading ? ' | ' : ''), run(it.org, { bold: true, italics: true })] : []),
@@ -265,8 +295,12 @@ export async function renderDocx(resume) {
       children.push(splitRow(left, it.dates, { before, keepNext: true, numbering: t.entry.marker ? { reference: 'entry', level: 0 } : null }));
       const textIndent = t.entry.marker ? { left: tw(ind.entryText) } : undefined;
       if (line2) children.push(para([line2], { keepNext: true, keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: textIndent }));
-      if (it.detail) children.push(para([run(it.detail, { italics: t.id === 'iitb' })], { keepNext: bullets.length > 0, keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: textIndent }));
-      bullets.forEach((b, i) => children.push(bulletPara(b, sp(i === 0 ? t.spacingPt.line2 : t.spacingPt.bullet), bullets.length >= 3 && i === bullets.length - 2)));
+      if (it.detail) children.push(para([run(it.detail, { italics: t.id === 'iitb', color: t.entry.style === 'pro' ? MUTED : undefined })], { keepNext: bullets.length > 0 || !!it.note, keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: textIndent }));
+      bullets.forEach((b, i) =>
+        children.push(bulletPara(b, sp(i === 0 ? t.spacingPt.line2 : t.spacingPt.bullet), (bullets.length >= 3 && i === bullets.length - 2) || (!!it.note && i === bullets.length - 1))),
+      );
+      // Recognition line under a role, or an education distinction.
+      if (it.note) children.push(para([run(it.note, { italics: true, color: MUTED })], { keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: { left: tw(ind.bulletText) } }));
     });
   }
 

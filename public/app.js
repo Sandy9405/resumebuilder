@@ -1,5 +1,5 @@
 import { renderResume } from '/shared/render.js';
-import { TEMPLATES, getTemplate, MM_TO_PX } from '/shared/templates.js';
+import { TEMPLATES, getTemplate, MM_TO_PX, FORMATS_BY_STAGE } from '/shared/templates.js';
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -25,13 +25,23 @@ async function api(path, opts = {}) {
 }
 
 // ---------- Setup ----------
-function buildSetup() {
-  $('#templateCards').innerHTML = Object.values(TEMPLATES)
-    .map(
-      (t, i) => `<label class="card"><input type="radio" name="template" value="${t.id}" ${i === 0 ? 'checked' : ''}>
-      <b>${t.label}</b><span>${t.blurb}</span></label>`,
-    )
+// Recent graduates see the academic formats; working professionals see
+// experience-first formats. Any format stays available from the toolbar later.
+function renderFormatCards() {
+  const stage = document.querySelector('input[name="stage"]:checked')?.value || 'recent';
+  const ids = FORMATS_BY_STAGE[stage] || Object.keys(TEMPLATES);
+  $('#templateCards').innerHTML = ids
+    .map((id, i) => {
+      const t = TEMPLATES[id];
+      return `<label class="card"><input type="radio" name="template" value="${t.id}" ${i === 0 ? 'checked' : ''}>
+      <b>${t.label}${i === 0 && stage !== 'recent' ? ' (recommended)' : ''}</b><span>${t.blurb}</span></label>`;
+    })
     .join('');
+}
+
+function buildSetup() {
+  renderFormatCards();
+  document.querySelectorAll('input[name="stage"]').forEach((r) => r.addEventListener('change', renderFormatCards));
   $('#templateSel').innerHTML = Object.values(TEMPLATES).map((t) => `<option value="${t.id}">${t.label}</option>`).join('');
 }
 
@@ -44,7 +54,7 @@ async function start() {
     $('#purposeRole').placeholder = 'Type the role first';
     return;
   }
-  const body = { buildMode: val('buildMode'), template: val('template'), pages: Number(val('pages')), purpose: { type: purposeType, role } };
+  const body = { buildMode: val('buildMode'), stage: val('stage'), template: val('template'), pages: Number(val('pages')), purpose: { type: purposeType, role } };
   S = await api('/api/sessions', { method: 'POST', body });
   store.set('sessionId', S.id);
   $('#speakToggle').checked = body.buildMode !== 'upload';

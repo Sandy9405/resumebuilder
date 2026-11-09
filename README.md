@@ -60,7 +60,26 @@ Sessions live in memory, so a redeploy or restart ends any resume in progress. L
 
 Voice needs no key: speech recognition and read-aloud both run in the user's browser.
 
-## The three formats
+## Career stage decides the formats on offer
+
+Setup asks **"Where are you in your career?"** and only shows the formats that suit the answer. Any format stays available from the toolbar later.
+
+| Answer | Formats offered |
+|---|---|
+| Student or recent graduate (last two years) | IITB, IIMA, HBS |
+| Working, under 5 years | Experienced Professional (recommended), HBS |
+| 5+ years, or switching jobs | Experienced Professional (recommended), HBS |
+
+**Experienced Professional** comes from the product owner's own CV. It's A4, in Calibri (bundled as Carlito, which has identical character widths), with a navy name and section rules, grey subtitle and dates. The layout:
+
+- a short Profile paragraph;
+- Experience lines as **Role** · Company, with dates right-aligned to the margin, results-first bullets, and an optional italic recognition line under a role;
+- then Education;
+- then Skills grouped by category.
+
+Education always comes after experience, and school results are dropped. Bullets may **bold** one short phrase (`**…**`) in every format.
+
+## The formats
 
 Each format's design comes from the reference resumes, measured from both the document internals and the rendered pages. The specs live in `shared/templates.js`, with the measurements noted inline.
 

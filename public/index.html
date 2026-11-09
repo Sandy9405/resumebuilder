@@ -10,7 +10,7 @@
   <!-- Setup: the three questions -->
   <main id="setup" class="setup" hidden>
     <h1>Build your resume</h1>
-    <p class="lede">Three quick choices, then we'll get to work. You can change format and length later.</p>
+    <p class="lede">A few quick choices, then we'll get to work. You can change format and length later.</p>
 
     <fieldset>
       <legend>1. How would you like to build your resume?</legend>
@@ -22,12 +22,21 @@
     </fieldset>
 
     <fieldset>
-      <legend>2. Which resume format?</legend>
+      <legend>2. Where are you in your career?</legend>
+      <div class="cards" data-name="stage">
+        <label class="card"><input type="radio" name="stage" value="recent" checked><b>Student or recent graduate</b><span>Still studying, or graduated or post-graduated in the last two years.</span></label>
+        <label class="card"><input type="radio" name="stage" value="working"><b>Working, under 5 years</b><span>A few years into your career.</span></label>
+        <label class="card"><input type="radio" name="stage" value="experienced"><b>5+ years, or switching jobs</b><span>Experience first: what you built and the results.</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. Which resume format?</legend>
       <div class="cards" id="templateCards" data-name="template"></div>
     </fieldset>
 
     <fieldset>
-      <legend>3. How long should it be?</legend>
+      <legend>4. How long should it be?</legend>
       <div class="cards cards-2" data-name="pages">
         <label class="card"><input type="radio" name="pages" value="1" checked><b>One page</b><span>Most relevant and recent work only.</span></label>
         <label class="card"><input type="radio" name="pages" value="2"><b>Two pages</b><span>More detail, if your experience supports it. No filler.</span></label>
@@ -35,7 +44,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>4. What is this resume for?</legend>
+      <legend>5. What is this resume for?</legend>
       <div class="cards" data-name="purpose">
         <label class="card"><input type="radio" name="purpose" value="jd"><b>A specific job</b><span>I have the job description or a link. I'll tailor to it and tell you honestly how well you fit.</span></label>
         <label class="card"><input type="radio" name="purpose" value="role"><b>A type of role</b><span>e.g. Product Manager, Data Analyst.</span>

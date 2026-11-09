@@ -82,6 +82,8 @@ export function sourceNumbers(sourceText) {
 }
 
 /** Every piece of text in the resume body, with a path for pointing at it. */
+const unbold = (s) => String(s ?? '').replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '$1');
+
 export function* resumeTexts(resume) {
   const h = resume.header || {};
   if (h.tagline) yield ['header.tagline', h.tagline, 'tagline'];
@@ -90,10 +92,10 @@ export function* resumeTexts(resume) {
     for (const it of s.items || []) {
       if (it.hidden) continue;
       for (const f of ['heading', 'org', 'location', 'dates', 'detail', 'note']) {
-        if (it[f]) yield [`${s.id}.${it.id}.${f}`, it[f], f];
+        if (it[f]) yield [`${s.id}.${it.id}.${f}`, unbold(it[f]), f];
       }
       for (let i = 0; i < (it.bullets || []).length; i++) {
-        yield [`${s.id}.${it.id}.bullets.${i}`, it.bullets[i], 'bullet', (it.locked || []).includes(it.bullets[i])];
+        yield [`${s.id}.${it.id}.bullets.${i}`, unbold(it.bullets[i]), 'bullet', (it.locked || []).includes(it.bullets[i])];
       }
     }
   }

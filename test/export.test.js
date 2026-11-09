@@ -5,7 +5,7 @@ import { renderDocx } from '../src/docx.js';
 import { measureLayout, renderPdf, layoutAvailable, closeLayout } from '../src/layout.js';
 import { sampleResume } from './fixtures/sample-resume.js';
 
-const TEMPLATES = ['iitb', 'iima', 'hbs'];
+const TEMPLATES = ['iitb', 'iima', 'hbs', 'pro'];
 
 test('render escapes HTML, embeds the engine, and marks editable text', () => {
   for (const t of TEMPLATES) {

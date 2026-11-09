@@ -19,6 +19,11 @@ const esc = (s) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+// Inline emphasis: **key result** becomes bold. Escaping happens first, so only
+// the bold markers are interpreted; unpaired asterisks stay literal.
+export const rich = (s) => esc(s).replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '<b>$1</b>');
+export const plain = (s) => String(s ?? '').replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '$1');
+
 const visibleSections = (resume) =>
   (resume.sections || [])
     .filter((s) => !s.hidden)
@@ -39,7 +44,9 @@ function css(t, opts) {
       `@font-face{font-family:"${family}";src:url("${opts.fontUrl(file)}") format("woff2");font-weight:${weight};font-style:${style};font-display:block}`,
   ).join('\n');
   const h = t.heading;
+  const C = { accent: '#111', muted: '#111', link: 'inherit', ...(t.colors || {}) };
   const headingCss = {
+    'rule-under': `border-bottom:0.75pt solid ${C.accent};padding-bottom:1pt;`,
     band: `background:${h.fill};padding:${h.padPt[0]}pt ${h.padPt[1]}pt;`,
     'dotted-rules': `border-top:0.6pt dotted #222;border-bottom:0.6pt dotted #222;padding:${h.padPt[0]}pt 0;`,
   }[h.style];
@@ -74,9 +81,13 @@ body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:$
 
 /* header */
 .hd .name{font-size:${sz(t.size.name)};font-weight:700;line-height:1.1;letter-spacing:${t.header.nameLetterSpacingPt}pt;${caps(t.header.nameCase)}}
-.hd .tagline{font-style:italic}
+.hd .name{color:${C.accent}}
+.hd .tagline{font-style:${t.header.layout === 'centered' ? 'normal' : 'italic'};font-size:${sz(t.size.tagline || t.size.base)};color:${C.muted}}
+.hd .contact{color:${C.muted}}
+.hd.centered{text-align:center}
 .hd .contact,.hd .details{font-size:${sz(t.size.contact)}}
-.hd a{color:inherit;text-decoration:none}
+.hd a.mail{color:inherit !important;text-decoration:none !important}
+.hd a{color:${C.link};text-decoration:${t.colors?.link ? 'underline' : 'none'};text-underline-offset:1.5pt;text-decoration-thickness:0.5pt}
 .hd .contact span+span::before{content:"${t.header.layout === 'left-rule' ? '\\00a0\\2022\\00a0' : '\\00a0|\\00a0'}";color:#444}
 .hd.split{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12pt;align-items:start}
 .hd.split .details{text-align:left}
@@ -102,13 +113,20 @@ body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:$
 .st>.mk{left:${t.entry.marker ? ind.entryMarker : ind.bulletMarker}mm}
 .t{text-wrap:pretty}
 .org{font-weight:700}
+.sh{color:${C.accent}}
+.muted,.pro .org,.pro .det,.pro .loc{color:${C.muted}}
+.pro .org{font-weight:400}
+${t.size.title ? `.eh:not(.edu)>.row>.l{font-size:${sz(t.size.title)}}` : ''}
+.pro .eh.edu.det{padding-left:2mm}
+.note{font-style:italic;color:${C.muted}}
+.eh.note-line{padding-left:${t.indentMm.bulletText}mm}
 .iima .org{text-decoration:underline;text-underline-offset:1.5pt;text-decoration-thickness:0.6pt}
 .hbs .org{text-transform:uppercase}
 .iitb .orgsep{font-weight:400}
 .iitb .org{font-style:italic}
 .ttl{font-weight:700}
 .hbs .ttl{font-style:italic}
-.dates{font-weight:${t.entry.datesStyle === 'bold' ? 700 : 400};font-style:${t.entry.datesStyle === 'italic-paren' ? 'italic' : 'normal'}}
+.dates{font-weight:${t.entry.datesStyle === 'bold' ? 700 : 400};font-style:${t.entry.datesStyle === 'italic-paren' ? 'italic' : 'normal'};color:${t.entry.datesStyle === 'muted' ? C.muted : 'inherit'}}
 .det{font-style:${t.id === 'iitb' ? 'italic' : 'normal'}}
 .para{text-wrap:pretty}
 .sk .cat{font-weight:700}
@@ -156,18 +174,22 @@ export const linkLabel = (raw) => String(raw || '').trim().replace(/^https?:\/\/
 function headerBlock(r, t, opts) {
   const h = r.header || {};
   const item = (text, href) => `<span>${href ? `<a href="${esc(href)}">${esc(text)}</a>` : esc(text)}</span>`;
-  const contact = [
-    h.email && item(h.email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(h.email) ? `mailto:${h.email}` : null),
-    h.phone && item(h.phone),
-    h.location && item(h.location),
-    ...(h.links || []).filter(Boolean).map((l) => item(linkLabel(l), linkHref(l))),
-  ].filter(Boolean);
+  const parts = {
+    email: h.email ? [`<span><a class="mail" href="${/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(h.email) ? esc(`mailto:${h.email}`) : '#'}">${esc(h.email)}</a></span>`] : [],
+    phone: h.phone ? [item(h.phone)] : [],
+    location: h.location ? [item(h.location)] : [],
+    links: (h.links || []).filter(Boolean).map((l) => item(linkLabel(l), linkHref(l))),
+  };
+  const contact = (t.header.contactOrder || ['email', 'phone', 'location', 'links']).flatMap((k) => parts[k]);
   const contactHtml = contact.length ? `<div class="contact">${contact.join('')}</div>` : '';
   const details = (h.details || []).filter(Boolean);
   const name = `<div class="name"${ed(opts, 'header.name')}>${esc(h.name)}</div>`;
   const tagline = h.tagline ? `<div class="tagline"${ed(opts, 'header.tagline')}>${esc(h.tagline)}</div>` : '';
   const detailsHtml = details.length ? `<div class="details">${details.map((d) => `<div>${esc(d)}</div>`).join('')}</div>` : '';
   const layout = t.header.layout;
+  if (layout === 'centered') {
+    return blk('hd centered', 'header', `${name}${tagline}${detailsHtml}${contactHtml}`);
+  }
   if (layout === 'split') {
     return blk(`hd split`, 'header', `<div>${name}${tagline}${contactHtml}</div>${detailsHtml}`);
   }
@@ -183,6 +205,7 @@ const fmtDates = (t, d) => (!d ? '' : t.entry.datesStyle === 'italic-paren' ? `(
 
 function entryBlocks(sec, it, t, opts, firstGap) {
   const p = (f) => ed(opts, `${sec.id}.${it.id}.${f}`);
+  const edu = sec.kind === 'education' ? ' edu' : '';
   const out = [];
   const style = t.entry.style;
   const dates = it.dates ? `<span class="dates"${p('dates')}>${esc(fmtDates(t, it.dates))}</span>` : '';
@@ -202,7 +225,12 @@ function entryBlocks(sec, it, t, opts, firstGap) {
 
   let left;
   let line2 = '';
-  if (style === 'iitb') {
+  if (style === 'pro') {
+    // **Role** · Organisation, Location           dates
+    const ttl = it.heading ? `<span class="ttl"${p('heading')}>${esc(it.heading)}</span>` : '';
+    const org = it.org ? `${ttl ? '<span class="muted"> · </span>' : ''}<span class="org"${p('org')}>${esc(it.org)}</span>` : '';
+    left = `${ttl}${org}${loc}`;
+  } else if (style === 'iitb') {
     // • **Title** | ***Org***, Location        (dates)
     const ttl = it.heading ? `<span class="ttl"${p('heading')}>${esc(it.heading)}</span>` : '';
     const org = it.org ? `${ttl ? '<span class="orgsep"> | </span>' : ''}<span class="ttl org"${p('org')}>${esc(it.org)}</span>` : '';
@@ -218,14 +246,17 @@ function entryBlocks(sec, it, t, opts, firstGap) {
     }
   }
   const mk = t.entry.marker ? mark(t.entry.marker) : '';
-  const following = !!(line2 || it.detail || bullets.length);
-  out.push(blk('eh', firstGap, `${mk}<div class="row"><div class="l t">${left}</div><div class="r">${dates}</div></div>`, { keep: following, path: itemPath, sec: sec.id }));
+  const following = !!(line2 || it.detail || bullets.length || it.note);
+  out.push(blk(`eh${edu}`, firstGap, `${mk}<div class="row"><div class="l t">${left}</div><div class="r">${dates}</div></div>`, { keep: following, path: itemPath, sec: sec.id }));
   if (line2) out.push(blk('eh l2', 'line2', `<div class="t">${line2}</div>`, { keep: !!(it.detail || bullets.length), path: itemPath, sec: sec.id }));
-  if (it.detail) out.push(blk('eh det', 'line2', `<div class="t"${p('detail')}>${esc(it.detail)}</div>`, { keep: bullets.length > 0, path: itemPath, sec: sec.id }));
+  if (it.detail) out.push(blk(`eh det${edu}`, 'line2', `<div class="t"${p('detail')}>${esc(it.detail)}</div>`, { keep: bullets.length > 0 || !!it.note, path: itemPath, sec: sec.id }));
   bullets.forEach((b, i) => {
-    const keep = bullets.length >= 3 && i === bullets.length - 2;
-    out.push(blk('bul', i === 0 && !t.entry.marker ? 'line2' : 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${p(`bullets.${i}`)}>${esc(b)}</div>`, { keep, path: itemPath, sec: sec.id }));
+    // Keep the last two bullets together, and the last bullet with a recognition line.
+    const keep = (bullets.length >= 3 && i === bullets.length - 2) || (!!it.note && i === bullets.length - 1);
+    out.push(blk('bul', i === 0 && !t.entry.marker ? 'line2' : 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${p(`bullets.${i}`)}>${rich(b)}</div>`, { keep, path: itemPath, sec: sec.id }));
   });
+  // Recognition under a role ("Best Performer, New Business 2019"), or an education distinction.
+  if (it.note) out.push(blk('eh note-line', 'line2', `<div class="t note"${p('note')}>${esc(it.note)}</div>`, { path: itemPath, sec: sec.id }));
   return out;
 }
 
@@ -270,7 +301,7 @@ function summaryBlocks(sec, t, opts) {
   sec.items.forEach((it, i) => {
     const p = (f) => ed(opts, `${sec.id}.${it.id}.${f}`);
     const gap = i === 0 ? 'headingAfter' : 'entry';
-    if (it.detail) out.push(blk('para', gap, `<div class="t"${p('detail')}>${esc(it.detail)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id }));
+    if (it.detail) out.push(blk('para', gap, `<div class="t"${p('detail')}>${rich(it.detail)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id }));
     (it.bullets || []).forEach((b, j) =>
       out.push(blk('bul', !it.detail && j === 0 ? gap : 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${p(`bullets.${j}`)}>${esc(b)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id })),
     );

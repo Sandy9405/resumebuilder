@@ -3,6 +3,8 @@
 //   IITB  <- fndpyhthjqpm.pdf (pdfTeX, URW Palladio, A4)
 //   IIMA  <- ankit-saraf.pdf (Word 2016, Garamond + Constantia, A4)
 //   HBS   <- 02/03 Chronological Layout templates and 07 VP sample (Word, Garamond, US Letter)
+//   PRO   <- Sandesh_Bora_CV.pdf (Word 2021, Calibri, A4): the product owner's format for
+//            experienced professionals and career switchers
 //
 // What was measured is noted inline. Where a reference has a defect the product
 // brief forbids, the spec deliberately departs from it (marked DEPARTS):
@@ -25,6 +27,11 @@ export const FONT_FACES = [
   ['EB Garamond', 'eb-garamond-latin-600-italic.woff2', 600, 'italic'],
   ['EB Garamond', 'eb-garamond-latin-700-normal.woff2', 700, 'normal'],
   ['EB Garamond', 'eb-garamond-latin-700-italic.woff2', 700, 'italic'],
+  // Carlito is metric-compatible with Calibri: identical widths, so lines wrap the same.
+  ['Carlito', 'carlito-latin-400-normal.woff2', 400, 'normal'],
+  ['Carlito', 'carlito-latin-400-italic.woff2', 400, 'italic'],
+  ['Carlito', 'carlito-latin-700-normal.woff2', 700, 'normal'],
+  ['Carlito', 'carlito-latin-700-italic.woff2', 700, 'italic'],
   ['TeX Gyre Pagella', 'tex-gyre-pagella-400.woff2', 400, 'normal'],
   ['TeX Gyre Pagella', 'tex-gyre-pagella-400italic.woff2', 400, 'italic'],
   ['TeX Gyre Pagella', 'tex-gyre-pagella-700.woff2', 700, 'normal'],
@@ -156,6 +163,50 @@ export const TEMPLATES = {
     skills: 'lines',
     sectionOrder: ['summary', 'experience', 'leadership', 'projects', 'education', 'achievements', 'skills', 'certifications', 'extracurricular', 'other'],
   },
+};
+
+TEMPLATES.pro = {
+  id: 'pro',
+  label: 'Experienced Professional',
+  blurb: 'Experience first: what you built and the results it got, then education. For 5+ years, or switching jobs.',
+  reference: 'Sandesh_Bora_CV.pdf',
+  audience: 'experienced',
+  page: A4,
+  // Measured: text x 34.0–558.7pt => 12mm left, 13mm right; name top at 30.8pt.
+  marginsMm: { top: 11, right: 13, bottom: 12, left: 12 },
+  font: { family: 'Carlito', fallback: 'Calibri, "Segoe UI", Arial, sans-serif', docx: 'Calibri' },
+  headingFont: null,
+  // Measured: body 10pt (pitch 12.1pt), role lines 11pt bold, headings 11pt bold caps,
+  // name 18pt bold caps, subtitle 11pt, contact line 10pt.
+  size: { base: 10, min: 9.5, max: 11, name: 18, heading: 11, contact: 10, tagline: 11, title: 11, table: 10 },
+  lineHeight: 1.2,
+  colors: { accent: '#1f3863', muted: '#545454', link: '#4f81bd' },
+  header: { layout: 'centered', nameCase: 'upper', nameLetterSpacingPt: 0.3, rule: 'none', contactOrder: ['phone', 'email', 'links', 'location'] },
+  heading: { style: 'rule-under', fill: null, align: 'left', case: 'upper', letterSpacingPt: 0.2, padPt: [0, 0] },
+  educationTable: null,
+  entry: {
+    // "Founder · Wysa ............ 2026 - Present"  (role bold 11pt, organisation muted, dates muted)
+    style: 'pro',
+    marker: '',
+    bulletMarker: '•',
+    datesStyle: 'muted',
+    orgCase: 'normal',
+  },
+  // Measured: bullet at +2.0mm, text at +5.6mm.
+  indentMm: { entryMarker: 0, entryText: 0, bulletMarker: 2, bulletText: 5.6 },
+  spacingPt: { header: 6, section: 7, headingAfter: 4, entry: 5, line2: 1, bullet: 2 },
+  skills: 'lines',
+  // DEPARTS: the reference right-aligns dates at ~545pt, inside the 558.7pt text edge,
+  // and one date sits 0.8pt off the others. Dates here align to the content edge.
+  sectionOrder: ['summary', 'experience', 'projects', 'leadership', 'education', 'achievements', 'certifications', 'skills', 'extracurricular', 'other'],
+};
+
+// Formats offered by career stage. Recent graduates get the academic formats;
+// working professionals get experience-first formats.
+export const FORMATS_BY_STAGE = {
+  recent: ['iitb', 'iima', 'hbs'],
+  working: ['pro', 'hbs'],
+  experienced: ['pro', 'hbs'],
 };
 
 export const SECTION_KINDS = [
