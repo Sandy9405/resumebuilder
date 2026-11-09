@@ -11,6 +11,7 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  ExternalHyperlink,
   LevelFormat,
   Packer,
   Paragraph,
@@ -24,6 +25,7 @@ import {
   WidthType,
 } from 'docx';
 import { getTemplate } from '../shared/templates.js';
+import { linkHref, linkLabel } from '../shared/render.js';
 
 const TW_PER_MM = 56.6929;
 const tw = (mm) => Math.round(mm * TW_PER_MM);
@@ -93,7 +95,13 @@ export async function renderDocx(resume) {
 
   const children = [];
   const h = resume.header || {};
-  const contact = [h.email, h.phone, h.location, ...(h.links || [])].filter(Boolean);
+  // [display text, href|null]; links become real hyperlinks showing the URL.
+  const contact = [
+    h.email && [h.email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(h.email) ? `mailto:${h.email}` : null],
+    h.phone && [h.phone, null],
+    h.location && [h.location, null],
+    ...(h.links || []).filter(Boolean).map((l) => [linkLabel(l), linkHref(l)]),
+  ].filter(Boolean);
   const sep = t.header.layout === 'left-rule' ? ' • ' : ' | ';
   const nameRun = run(h.name || '', {
     bold: true,
@@ -101,8 +109,13 @@ export async function renderDocx(resume) {
     smallCaps: t.header.nameCase === 'small-caps',
     characterSpacing: Math.round(t.header.nameLetterSpacingPt * 20),
   });
+  const contactRuns = () =>
+    contact.flatMap(([text, href], i) => {
+      const r = run(text, { size: hp(t.size.contact) });
+      return [...(i ? [run(sep, { size: hp(t.size.contact) })] : []), href ? new ExternalHyperlink({ link: href, children: [r] }) : r];
+    });
   const contactPara = (align, border) =>
-    para([run(contact.join(sep), { size: hp(t.size.contact) })], {
+    para(contactRuns(), {
       alignment: align,
       ...(border ? { border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: '111111', space: 2 } } } : {}),
     });

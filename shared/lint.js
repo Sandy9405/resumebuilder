@@ -28,10 +28,25 @@ export const AI_PHRASES = [
   [/\bstrategic synerg/i, 'strategic synergies'],
   [/\bresponsible for\b/i, 'responsible for (say what was done)'],
   [/\bvarious\b/i, 'various'],
+  [/\borchestrat(e|ed|ing)\b/i, 'orchestrated'],
+  [/\bchampion(ed|ing)\b/i, 'championed'],
+  [/\bharness(ed|ing)?\b/i, 'harnessed'],
+  [/\bempower(ed|ing)?\b/i, 'empowered'],
+  [/\belevat(e|ed|ing)\b/i, 'elevated'],
+  [/\bcatalyz(e|ed|ing)\b/i, 'catalyzed'],
+  [/\bdelv(e|ed|ing)\b/i, 'delved'],
+  [/\b(showcas|underscor)(e|ed|ing)\b/i, 'showcasing'],
+  [/\bnot (only|just)\b.*\bbut\b/i, 'not only… but'],
+  [/\bin order to\b/i, 'in order to (use "to")'],
+  [/\b(world|best)[- ]class\b/i, 'world-class'],
+  [/\b(innovative|holistic|robust|impactful)\b/i, 'vague adjective'],
+  [/\bmeticulous(ly)?\b/i, 'meticulous'],
 ];
 
 const PLACEHOLDER = /\[[^\]]*\]|\bTBD\b|\bX+%|\bN\/A\b|lorem ipsum|\?\?/i;
 const FIRST_PERSON = /\b(I|me|my|mine|we|our)\b/;
+const IRREGULAR = 'built|made|done|given|taken|led|run|sent|set|written|shown|known|held|kept|brought|sold|taught|found|won|chosen|driven|grown|drawn|met|paid|put|begun|seen|told|spent|lost';
+const PASSIVE = new RegExp(`\\b(was|were|been|being|is|are|got)\\s+(\\w+ly\\s+)?(\\w+ed|\\w+en|${IRREGULAR})\\b`, 'i');
 
 const NUMBER_WORDS = {
   zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
@@ -78,7 +93,7 @@ export function* resumeTexts(resume) {
         if (it[f]) yield [`${s.id}.${it.id}.${f}`, it[f], f];
       }
       for (let i = 0; i < (it.bullets || []).length; i++) {
-        yield [`${s.id}.${it.id}.bullets.${i}`, it.bullets[i], 'bullet'];
+        yield [`${s.id}.${it.id}.bullets.${i}`, it.bullets[i], 'bullet', (it.locked || []).includes(it.bullets[i])];
       }
     }
   }
@@ -95,8 +110,15 @@ export function lintResume(resume, sourceText) {
   const verbCount = new Map();
   const seenBullets = new Map();
 
-  for (const [path, text, kind] of resumeTexts(resume)) {
+  const keywords = (resume.target?.keywords || []).flatMap((k) => [k.term, ...(k.aliases || [])]).map((k) => k.toLowerCase());
+  const isKeyword = (label) => keywords.some((k) => k && label.toLowerCase().includes(k));
+  let bulletCount = 0;
+  let ingTails = 0;
+
+  for (const [path, text, kind, locked] of resumeTexts(resume)) {
     const short = text.length > 70 ? text.slice(0, 67) + '...' : text;
+    // The user's own dictated wording is theirs: no style nagging, no number doubts.
+    if (locked) continue;
 
     for (const m of text.matchAll(NUM_RE)) {
       const n = normNum(m[0]);
@@ -115,12 +137,23 @@ export function lintResume(resume, sourceText) {
     }
 
     for (const [re, label] of AI_PHRASES) {
-      if (re.test(text)) {
+      const hit = text.match(re);
+      if (hit && !isKeyword(hit[0])) {
         issues.push({ level: 'warn', code: 'ai-language', message: `Generic phrasing ("${label}"): "${short}"`, path });
       }
     }
 
     if (kind === 'bullet') {
+      bulletCount++;
+      // ASD-STE100-style sentence checks. Technical terms and job keywords are exempt
+      // from vocabulary rules, not from sentence length or voice.
+      const words = text.trim().split(/\s+/).length;
+      if (words > 25) issues.push({ level: 'warn', code: 'ste-length', message: `${words} words. Keep a bullet to 25 words at most (aim for 20): "${short}"`, path });
+      if (PASSIVE.test(text)) {
+        issues.push({ level: 'warn', code: 'ste-passive', message: `Passive voice; say who did it: "${short}"`, path });
+      }
+      if (/,\s+(\w+ly\s+)?\w{3,}ing\b/.test(text)) ingTails++;
+      if (/[—]|\s-\s/.test(text)) issues.push({ level: 'info', code: 'ste-punctuation', message: `Use a comma or a separate sentence instead of a dash: "${short}"`, path });
       if (FIRST_PERSON.test(text)) {
         issues.push({ level: 'warn', code: 'first-person', message: `First-person pronoun in a bullet: "${short}"`, path });
       }
@@ -133,6 +166,17 @@ export function lintResume(resume, sourceText) {
     }
   }
 
+  // "Did X, increasing Y" is a fine shape once; on every bullet it reads machine-written.
+  if (ingTails > Math.max(2, Math.ceil(bulletCount * 0.35))) {
+    issues.push({
+      level: 'warn',
+      code: 'ste-pattern',
+      message: `${ingTails} of ${bulletCount} bullets end with ", …ing" ("…, increasing …"). Vary the shape: "…; completion rose from 65% to 82%", "… to cut …", or a separate result.`,
+      path: '',
+    });
+  }
+
+  issues.push(...headerIssues(resume));
   issues.push(...atsIssues(resume));
 
   for (const [verb, paths] of verbCount) {
@@ -175,11 +219,32 @@ function dateStyle(d) {
   return 'year';
 }
 
-export function atsIssues(resume) {
+// The header must be complete: name, a sub-header (professional title), contact
+// details, and the profile links a recruiter will click.
+export function headerIssues(resume) {
   const out = [];
   const h = resume.header || {};
-  if (!h.email) out.push({ level: 'warn', code: 'ats-contact', message: 'No email address. Applicant tracking systems and recruiters need one in the resume text.', path: 'header.name' });
-  if (!h.phone) out.push({ level: 'info', code: 'ats-contact', message: 'No phone number. Most applications expect one.', path: 'header.name' });
+  const links = (h.links || []).map((l) => l.toLowerCase());
+  const has = (re) => links.some((l) => re.test(l));
+  const fam = (resume.profile?.jobFamilies || []).join(' ').toLowerCase();
+  if (!h.name) out.push({ level: 'error', code: 'header-incomplete', message: 'The resume has no name.', path: 'header.name' });
+  if (!h.tagline) out.push({ level: 'warn', code: 'header-incomplete', message: 'No sub-header under the name. Add a one-line professional title, e.g. "Backend Engineer · Payments".', path: 'header.name' });
+  if (!h.email) out.push({ level: 'warn', code: 'header-incomplete', message: 'No email address. Recruiters and applicant tracking systems need one in the resume text.', path: 'header.name' });
+  if (!h.phone) out.push({ level: 'warn', code: 'header-incomplete', message: 'No phone number.', path: 'header.name' });
+  if (!h.location) out.push({ level: 'info', code: 'header-incomplete', message: 'No location (city is enough).', path: 'header.name' });
+  if (!links.length) out.push({ level: 'warn', code: 'links-missing', message: 'No profile links. Add LinkedIn and any portfolio, GitHub or personal website.', path: 'header.name' });
+  else if (!has(/linkedin\./)) out.push({ level: 'info', code: 'links-missing', message: 'No LinkedIn profile link.', path: 'header.name' });
+  if (/software|engineer|developer|data|machine learning|\bml\b|\bai\b/.test(fam) && !has(/github\.|gitlab\./)) {
+    out.push({ level: 'info', code: 'links-missing', message: 'For engineering and data roles, a GitHub link helps if you have public work.', path: 'header.name' });
+  }
+  if (/design|ux|ui\b|graphic|creative/.test(fam) && !links.some((l) => !/linkedin\./.test(l))) {
+    out.push({ level: 'warn', code: 'links-missing', message: 'Design roles expect a portfolio link (Behance, Dribbble or your own site).', path: 'header.name' });
+  }
+  return out;
+}
+
+export function atsIssues(resume) {
+  const out = [];
   const styles = new Map();
   for (const s of resume.sections || []) {
     if (s.hidden || !(s.items || []).some((i) => !i.hidden)) continue;

@@ -388,15 +388,18 @@ function renderBadge() {
   const b = $('#fitBadge');
   if (!l) return void (b.hidden = true);
   b.hidden = false;
-  b.className = `badge ${l.fits ? (l.level ? 'tight' : 'ok') : 'bad'}`;
-  b.textContent = l.fits
-    ? `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · spacing tightened' : ''}`
-    : `${l.pages} pages · over limit`;
-  b.title = l.fits
-    ? l.level
+  const underfilled = (l.issues || []).some((i) => i.code === 'underfilled');
+  b.className = `badge ${!l.fits ? 'bad' : l.level || underfilled ? 'tight' : 'ok'}`;
+  b.textContent = !l.fits
+    ? `${l.pages} pages · over limit`
+    : `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · spacing tightened' : l.expand ? ` · text ${l.bodySize}pt to fill` : ''}${underfilled ? ' · needs more content' : ''}`;
+  b.title = !l.fits
+    ? `About ${Math.round(l.overflow * 100)}% of a page too long. Ask the assistant to tighten it.`
+    : l.level
       ? `Fits after a small spacing adjustment (level ${l.level}); text size is unchanged or within 0.5pt.`
-      : `Fits; the last page is ${Math.round(l.lastPageFill * 100)}% full.`
-    : `About ${Math.round(l.overflow * 100)}% of a page too long. Ask the assistant to tighten it.`;
+      : l.expand
+        ? `Your content filled ${Math.round(l.baseFill * 100)}% of the page at normal size, so body text and spacing were enlarged (name and headings unchanged). Adding projects, internships or achievements is better than larger text.`
+        : `Fits; the page is ${Math.round(l.lastPageFill * 100)}% full.`;
 }
 
 function fitScale() {
@@ -470,8 +473,10 @@ const label = (c) =>
     'over-limit': 'Too long', 'outside-boundary': 'Outside margins', overlap: 'Overlap', 'date-collision': 'Date collision',
     'date-misaligned': 'Date alignment', 'indent-inconsistent': 'Indentation', 'orphan-heading': 'Page break',
     'blank-page': 'Blank page', 'table-overflow': 'Table', justified: 'Word spacing', 'font-fallback': 'Font',
+    underfilled: 'Page not full', 'header-incomplete': 'Header', 'links-missing': 'Links',
+    'ste-length': 'Too long', 'ste-passive': 'Passive voice', 'ste-pattern': 'Repetitive shape', 'ste-punctuation': 'Punctuation',
     'jd-missing': 'Job keyword', 'jd-ask': 'Job question', 'jd-gap': 'Job gap',
-    'ats-heading': 'ATS heading', 'ats-dates': 'ATS dates', 'ats-contact': 'ATS contact',
+    'ats-heading': 'ATS heading', 'ats-dates': 'ATS dates',
     'long-bullet': 'Long bullet', 'marker-misaligned': 'Bullet alignment', 'widow-word': 'Lone word', 'sparse-page': 'Length', 'pdf-mismatch': 'PDF',
   })[c] || c;
 

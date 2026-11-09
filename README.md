@@ -133,6 +133,24 @@ The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
   - Every block is painted in a single pass, so headings are no longer written to the PDF before the body text.
 - Content checks flag non-standard section headings, missing email or phone, two-digit years and mixed date formats.
 
+## Content rules
+
+- **Complete header.** Every resume has a name, a sub-header (a one-line professional title), email, phone, city, and every profile link the user has (LinkedIn, portfolio, GitHub, personal site). Links are real hyperlinks in the PDF and DOCX, displayed as the address itself.
+  - Links hidden behind words like "LinkedIn" in uploaded PDFs or DOCX files are recovered from the file's link annotations, so they aren't lost.
+  - Missing items are flagged (`header-incomplete`, `links-missing`), and the agent asks for them.
+- **One page means a full page.** If content falls short, the agent asks for more real material first: projects, internships, coursework, competitions, responsibilities, certifications, then interests.
+  - As a last resort, the layout engine enlarges spacing, line spacing (at most 12%) and **body text only** (never the name or headings), up to each template's `size.max`.
+  - Anything still under 75% full at normal size is flagged `underfilled`. Typography typically adds 15–20 percentage points of fill; it can't turn half a page into a full one.
+  - Two-page resumes are never stretched.
+- **The user's wording wins.** Bullets the user dictates, or types into the preview, are stored in `locked` and must stay word for word. An edit that changes them is refused unless the model sets `user_requested_change`, which it may only do when the user asked. Locked bullets are exempt from style checks.
+- **ASD-STE100-style writing:**
+  - one idea per bullet, at most 25 words;
+  - active voice, simple single-meaning verbs, plain punctuation;
+  - the ", …ing" result tail capped at about one bullet in three;
+  - extra AI-slop terms flagged.
+
+  Technical terms and the target job's keywords are exempt from the vocabulary rules. The 60–70% plain / 30–40% terms split is guidance in the prompt; it isn't measured, because it can't be measured reliably.
+
 ## Voice limits
 
 Each recording is limited to 2 minutes (a countdown shows), and several recordings in a row are fine. Recording stops after 15 seconds without speech; if nothing was said, nothing is sent. If the browser ends recognition early mid-sentence, it restarts automatically within those limits.

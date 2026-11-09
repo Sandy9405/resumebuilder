@@ -118,7 +118,9 @@ export function describeFit(l) {
     return `Overflows: ${l.pages} pages against a ${l.limit}-page limit, about ${pct(l.overflow)} of a page too long. Shorten or hide lower-priority content (set_visibility, or move bullets to reserve_bullets). Do not rely on smaller text.`;
   }
   const tight = l.level ? ` Spacing was tightened (level ${l.level}) to absorb a ${pct(l.baseOverflow)} overflow; trimming a line or two would restore normal spacing.` : '';
-  return `Fits: ${l.pages} of ${l.limit} page(s); last page ${pct(l.lastPageFill)} full.${tight}`;
+  const grown = l.expand ? ` At normal size the content filled only ${pct(l.baseFill)}; body text was enlarged to ${l.bodySize}pt with wider spacing to fill the page.` : '';
+  const short = l.issues?.some((i) => i.code === 'underfilled') ? ' Underfilled: restore reserved or hidden content, then ask the user for more real material (projects, internships, coursework, competitions, responsibilities, certifications, interests).' : '';
+  return `Fits: ${l.pages} of ${l.limit} page(s); last page ${pct(l.lastPageFill)} full.${tight}${grown}${short}`;
 }
 
 export async function closeLayout() {

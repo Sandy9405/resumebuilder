@@ -55,7 +55,27 @@ function cleanItem(raw, id, prev) {
     // Detail kept for longer versions of the resume but not shown at the current length.
     reserve: raw?.reserve_bullets !== undefined ? strList(raw.reserve_bullets) : prev?.reserve || [],
     hidden: typeof raw?.hidden === 'boolean' ? raw.hidden : prev?.hidden || false,
+    // Bullets in the user's own words: kept verbatim, exempt from style rewriting.
+    locked: raw?.user_wording !== undefined ? strList(raw.user_wording) : prev?.locked || [],
   };
+}
+
+/** Every locked bullet must appear word for word in bullets or reserve. */
+function checkLocked(item, prev, userRequestedChange = false) {
+  const kept = new Set([...item.bullets, ...item.reserve]);
+  const missing = item.locked.filter((b) => !kept.has(b));
+  if (missing.length) {
+    throw new OpError(
+      `These bullets are the user's own wording and must stay exactly as written: ${missing.map((b) => `"${b}"`).join('; ')}. Copy them unchanged into bullets (or reserve_bullets). If the user asked to change one, put their new wording in both bullets and user_wording.`,
+    );
+  }
+  // Rewording or removing a dictated bullet needs the user's explicit request.
+  const dropped = (prev?.locked || []).filter((b) => !item.locked.includes(b) || !kept.has(b));
+  if (dropped.length && !userRequestedChange) {
+    throw new OpError(
+      `The user dictated ${dropped.map((b) => `"${b}"`).join('; ')}. Keep it unchanged in bullets and user_wording. Only if the user explicitly asked to reword or remove it, call update_item again with user_requested_change=true.`,
+    );
+  }
 }
 
 function cleanHeader(raw) {
@@ -127,7 +147,11 @@ export function applyOp(resume, name, input) {
           kind: kindOf(s.kind),
           title: str(s.title) || kindOf(s.kind),
           hidden: false,
-          items: (s.items || []).map((it) => cleanItem(it)),
+          items: (s.items || []).map((it) => {
+            const item = cleanItem(it);
+            checkLocked(item);
+            return item;
+          }),
         })),
         resume.settings.template,
       );
@@ -163,13 +187,16 @@ export function applyOp(resume, name, input) {
       const sec = findSection(resume, input.section_id);
       if (input.after_item_id && input.after_item_id !== '__top__') findItemIndex(sec, input.after_item_id);
       const item = cleanItem(input.item);
+      checkLocked(item);
       insertAfter(sec.items, item, input.after_item_id);
       return `Added "${item.org || item.heading}" to ${sec.title} (${item.id})`;
     }
     case 'update_item': {
       const sec = findSection(resume, input.section_id);
       const i = findItemIndex(sec, input.item_id);
-      sec.items[i] = cleanItem(input.item, sec.items[i].id, sec.items[i]);
+      const next = cleanItem(input.item, sec.items[i].id, sec.items[i]);
+      checkLocked(next, sec.items[i], input.user_requested_change === true);
+      sec.items[i] = next;
       return `Updated "${sec.items[i].org || sec.items[i].heading}" in ${sec.title}`;
     }
     case 'remove_item': {
@@ -261,8 +288,12 @@ export function applyManualEdit(resume, path, value) {
   if (parts[2] === 'bullets') {
     const n = Number(parts[3]);
     if (!Number.isInteger(n) || n < 0 || n >= item.bullets.length) throw new OpError('Bad bullet index');
-    if (v) item.bullets[n] = v;
-    else item.bullets.splice(n, 1);
+    const old = item.bullets[n];
+    item.locked = (item.locked || []).filter((b) => b !== old);
+    if (v) {
+      item.bullets[n] = v;
+      item.locked.push(v); // typed by the user: their wording, keep it
+    } else item.bullets.splice(n, 1);
     return;
   }
   if (!['heading', 'org', 'location', 'dates', 'detail', 'note'].includes(parts[2])) throw new OpError('Bad field');
@@ -277,7 +308,7 @@ export function normalizeResume(r) {
   r.sections = (r.sections || []).map((s) => ({
     ...s,
     hidden: !!s.hidden,
-    items: (s.items || []).map((it) => ({ note: '', reserve: [], hidden: false, ...it })),
+    items: (s.items || []).map((it) => ({ note: '', reserve: [], hidden: false, locked: [], ...it })),
   }));
   return r;
 }

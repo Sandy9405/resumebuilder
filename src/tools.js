@@ -22,8 +22,14 @@ const ITEM = {
       items: S,
       description: 'Accurate bullets kept in the user\'s data but not shown at the current page limit. Move bullets here instead of deleting them when cutting for length; bring them back for a longer version.',
     },
+    user_wording: {
+      type: 'array',
+      items: S,
+      description:
+        'Bullets the user dictated word for word or asked to keep exactly as they said it ("add it like this"). Copy each one unchanged into bullets as well. When updating an item, keep this list as it is in <resume_state> (field "locked"); change an entry only when the user gives new wording or asks you to rewrite it.',
+    },
   },
-  required: ['heading', 'org', 'location', 'dates', 'detail', 'note', 'bullets', 'reserve_bullets'],
+  required: ['heading', 'org', 'location', 'dates', 'detail', 'note', 'bullets', 'reserve_bullets', 'user_wording'],
   additionalProperties: false,
 };
 
@@ -94,8 +100,16 @@ export const TOOLS = [
   }),
   tool(
     'update_item',
-    'Replace one entry. Send the full item, copying unchanged fields and bullets exactly from <resume_state>.',
-    { section_id: S, item_id: S, item: ITEM },
+    'Replace one entry. Send the full item, copying unchanged fields, bullets and user_wording exactly from <resume_state>.',
+    {
+      section_id: S,
+      item_id: S,
+      item: ITEM,
+      user_requested_change: {
+        type: 'boolean',
+        description: 'true only when the user explicitly asked, in this conversation, to reword or remove one of their own dictated bullets. Otherwise false.',
+      },
+    },
   ),
   tool('remove_item', 'Delete one entry permanently. Only when the user asks. To cut for length, use set_visibility instead.', { section_id: S, item_id: S }),
   tool(

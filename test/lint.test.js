@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lintResume, sourceNumbers, atsIssues } from '../shared/lint.js';
+import { lintResume, sourceNumbers, atsIssues, headerIssues } from '../shared/lint.js';
 
 const resume = (bullets, extra = {}) => ({
   header: { name: 'A' },
@@ -47,7 +47,7 @@ test('AI phrasing, first person, placeholders, duplicates, repeated verbs', () =
 
 test('clean resume has no issues', () => {
   const r = resume(['Built a lead-tracking dashboard for the sales team']);
-  r.header = { name: 'A', email: 'a@x.com', phone: '1' };
+  r.header = { name: 'A', email: 'a@x.com', phone: '1', tagline: 'Engineer', location: 'Pune', links: ['linkedin.com/in/a'] };
   assert.deepEqual(lintResume(r, 'Acme 2021 2023 1'), []);
 });
 
@@ -62,7 +62,7 @@ test('ATS: creative headings, missing contact, two-digit years and mixed date fo
   };
   const codes = atsIssues(r).map((i) => i.code);
   assert.ok(codes.includes('ats-heading'));
-  assert.equal(codes.filter((c) => c === 'ats-contact').length, 2);
+  assert.equal(headerIssues(r).filter((i) => /email|phone/i.test(i.message)).length, 2);
   assert.ok(codes.filter((c) => c === 'ats-dates').length >= 2);
   r.sections[0].title = 'Professional Experience';
   assert.ok(!atsIssues(r).some((i) => i.code === 'ats-heading'));

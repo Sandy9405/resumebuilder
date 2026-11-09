@@ -10,7 +10,7 @@
 // Spacing is applied as padding-top on blocks (never margins), so block heights
 // add up exactly and the paginator's arithmetic matches what is drawn.
 
-import { getTemplate, contentBox, FONT_FACES, DENSITY_LEVELS, MAX_AUTO_TIGHTEN, MM_TO_PX } from './templates.js';
+import { getTemplate, contentBox, FONT_FACES, DENSITY_LEVELS, MAX_AUTO_TIGHTEN, EXPAND_LEVELS, FILL_TARGET, FILL_CEILING, LOW_CONTENT, MM_TO_PX } from './templates.js';
 
 const esc = (s) =>
   String(s ?? '')
@@ -30,7 +30,8 @@ const visibleSections = (resume) =>
 function css(t, opts) {
   const m = t.marginsMm;
   const sp = t.spacingPt;
-  const sz = (pt) => `calc(${pt}pt + var(--fd))`;
+  const sz = (pt) => `calc(${pt}pt + var(--fd))`; // name, headings: shrink ladder only
+  const bz = (pt) => `calc(${pt}pt + var(--fd) + var(--fx))`; // body text: may also grow to fill a page
   const gap = (pt) => `calc(${pt}pt * var(--sp))`;
   const fam = `"${t.font.family}", ${t.font.fallback}`;
   const faces = FONT_FACES.map(
@@ -48,10 +49,10 @@ function css(t, opts) {
 
   return `${faces}
 @page{size:${t.page.widthMm}mm ${t.page.heightMm}mm;margin:0}
-:root{--sp:1;--fd:0pt;--lh:calc((${t.size.base}pt + var(--fd)) * ${t.lineHeight})}
+:root{--sp:1;--fd:0pt;--fx:0pt;--lx:1;--lh:calc((${t.size.base}pt + var(--fd) + var(--fx)) * ${t.lineHeight} * var(--lx))}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:${fam};font-size:${sz(t.size.base)};line-height:${t.lineHeight};
+body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:${fam};font-size:${bz(t.size.base)};line-height:calc(${t.lineHeight} * var(--lx));
   font-kerning:normal;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 #flow{position:absolute;left:-20000px;top:0;width:${contentBox(t.id).widthMm}mm}
 .page{width:${t.page.widthMm}mm;height:${t.page.heightMm}mm;padding:${m.top}mm ${m.right}mm ${m.bottom}mm ${m.left}mm;
@@ -75,6 +76,7 @@ body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:$
 .hd .name{font-size:${sz(t.size.name)};font-weight:700;line-height:1.1;letter-spacing:${t.header.nameLetterSpacingPt}pt;${caps(t.header.nameCase)}}
 .hd .tagline{font-style:italic}
 .hd .contact,.hd .details{font-size:${sz(t.size.contact)}}
+.hd a{color:inherit;text-decoration:none}
 .hd .contact span+span::before{content:"${t.header.layout === 'left-rule' ? '\\00a0\\2022\\00a0' : '\\00a0|\\00a0'}";color:#444}
 .hd.split{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12pt;align-items:start}
 .hd.split .details{text-align:left}
@@ -117,7 +119,7 @@ body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:$
 .st.nomk{padding-left:0}
 
 /* education table: fixed column widths, rows never split */
-table.edu{width:100%;border-collapse:collapse;table-layout:fixed;font-size:${sz(t.size.table)};line-height:1.15}
+table.edu{width:100%;border-collapse:collapse;table-layout:fixed;font-size:${bz(t.size.table)};line-height:1.15}
 table.edu td,table.edu th{padding:1.6pt 4pt;vertical-align:middle;overflow-wrap:break-word;text-align:left}
 table.edu tr{break-inside:avoid}
 ${et?.style === 'rules' ? `table.edu thead tr{border-top:0.8pt solid #111;border-bottom:0.5pt solid #111}table.edu tbody tr:last-child{border-bottom:0.8pt solid #111}table.edu th{font-weight:700}` : ''}
@@ -141,10 +143,26 @@ function blk(cls, gap, inner, { keep = false, path = '', sec = '' } = {}) {
   return `<div class="blk ${cls}" data-gap="${gap}"${keep ? ' data-keep="next"' : ''}${path ? ` data-item="${esc(path)}"` : ''}${sec ? ` data-sec="${esc(sec)}"` : ''}>${inner}</div>`;
 }
 
+// Links are real hyperlinks in the PDF, shown as the URL itself (not "LinkedIn")
+// so ATS parsers that read only text still capture the address.
+export function linkHref(raw) {
+  const s = String(raw || '').trim();
+  if (/^https?:\/\/[^\s]+$/i.test(s)) return s;
+  if (/^[a-z0-9][\w-]*(\.[\w-]+)+(\/[^\s]*)?$/i.test(s)) return `https://${s}`;
+  return null;
+}
+export const linkLabel = (raw) => String(raw || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+
 function headerBlock(r, t, opts) {
   const h = r.header || {};
-  const contact = [h.email, h.phone, h.location, ...(h.links || [])].filter(Boolean);
-  const contactHtml = contact.length ? `<div class="contact">${contact.map((c) => `<span>${esc(c)}</span>`).join('')}</div>` : '';
+  const item = (text, href) => `<span>${href ? `<a href="${esc(href)}">${esc(text)}</a>` : esc(text)}</span>`;
+  const contact = [
+    h.email && item(h.email, /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(h.email) ? `mailto:${h.email}` : null),
+    h.phone && item(h.phone),
+    h.location && item(h.location),
+    ...(h.links || []).filter(Boolean).map((l) => item(linkLabel(l), linkHref(l))),
+  ].filter(Boolean);
+  const contactHtml = contact.length ? `<div class="contact">${contact.join('')}</div>` : '';
   const details = (h.details || []).filter(Boolean);
   const name = `<div class="name"${ed(opts, 'header.name')}>${esc(h.name)}</div>`;
   const tagline = h.tagline ? `<div class="tagline"${ed(opts, 'header.tagline')}>${esc(h.tagline)}</div>` : '';
@@ -292,6 +310,14 @@ function engine() {
     const apply = (lv) => {
       root.style.setProperty('--sp', String(levels[lv].spacing));
       root.style.setProperty('--fd', `${levels[lv].font}pt`);
+      root.style.setProperty('--fx', '0pt');
+      root.style.setProperty('--lx', '1');
+    };
+    const applyExpand = (e) => {
+      root.style.setProperty('--sp', String(e.spacing));
+      root.style.setProperty('--fd', '0pt');
+      root.style.setProperty('--fx', `${e.font}pt`);
+      root.style.setProperty('--lx', String(e.leading || 1));
     };
     const measure = () =>
       blocks.map((b) => ({
@@ -374,6 +400,28 @@ function engine() {
         m = measure();
         p = paginate(m);
       }
+    }
+
+    // Fill a short one-page resume: grow spacing and body text, never past the
+    // template's maximum body size, never into a second page.
+    const fillOf = (p) => p.used[p.used.length - 1] / pageH;
+    const baseFill = p.pages.length === 1 ? fillOf(p) : 1;
+    let expand = 0;
+    if (cfg.limit === 1 && p.pages.length === 1 && level === 0 && baseFill < cfg.fillTarget) {
+      const ex = cfg.expandLevels;
+      for (let k = 1; k < ex.length; k++) {
+        if (cfg.baseSize + ex[k].font > cfg.maxSize) break;
+        applyExpand(ex[k]);
+        const m2 = measure();
+        const p2 = paginate(m2);
+        if (p2.pages.length > 1 || fillOf(p2) > cfg.fillCeiling) break;
+        expand = k;
+        m = m2;
+        p = p2;
+        if (fillOf(p2) >= cfg.fillTarget) break;
+      }
+      if (expand === 0) apply(0);
+      else applyExpand(ex[expand]);
     }
 
     // Build pages.
@@ -487,6 +535,13 @@ function engine() {
       if (getComputedStyle(el).textAlign === 'justify') add('error', 'justified', 'Justified text found; it stretches word spacing.', el);
     });
     const lastUsed = p.used[p.used.length - 1] / pageH;
+    if (cfg.limit === 1 && p.pages.length === 1 && baseFill < cfg.lowContent) {
+      add(
+        'warn',
+        'underfilled',
+        `At normal size the content fills only ${Math.round(baseFill * 100)}% of the page${expand ? ` (enlarged to fill ${Math.round(lastUsed * 100)}%)` : ''}. A one-page resume should look full: ask for projects, internships, coursework, competitions, positions of responsibility, certifications or interests.`,
+      );
+    }
     if (cfg.limit === 2 && p.pages.length === 2 && lastUsed < 0.2) {
       add('info', 'sparse-page', `Page 2 is only about ${Math.round(lastUsed * 100)}% full. This may read better as one page.`);
     }
@@ -501,6 +556,9 @@ function engine() {
       level,
       overflow: Number(overflowOf(p).toFixed(3)),
       baseOverflow: Number(baseOverflow.toFixed(3)),
+      expand,
+      baseFill: Number(baseFill.toFixed(3)),
+      bodySize: cfg.baseSize + (expand ? cfg.expandLevels[expand].font : level ? levels[level].font : 0),
       lastPageFill: Number(lastUsed.toFixed(3)),
       issues,
     };
@@ -530,6 +588,11 @@ export function renderResume(resume, opts = {}) {
     mmToPx: MM_TO_PX,
     levels: DENSITY_LEVELS,
     maxAutoTighten: resume.settings?.autoTighten === false ? 0 : MAX_AUTO_TIGHTEN,
+    expandLevels: EXPAND_LEVELS,
+    fillTarget: FILL_TARGET,
+    fillCeiling: FILL_CEILING,
+    lowContent: LOW_CONTENT,
+    maxSize: t.size.max,
     baseSize: t.size.base,
     minSize: t.size.min,
     family: fam,

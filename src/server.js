@@ -3,15 +3,13 @@ import multer from 'multer';
 import path from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import mammoth from 'mammoth';
-import { extractText, getDocumentProxy } from 'unpdf';
 
 import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume } from '../shared/lint.js';
 import { jdIssues, jdCoverage } from '../shared/jd.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
-import { ExtractError } from './extract.js';
+import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
 import { renderDocx } from './docx.js';
 import { renderResume } from '../shared/render.js';
@@ -151,36 +149,27 @@ export function createApp({ client } = {}) {
     if (!f) return res.status(400).json({ error: 'No file received.' });
     const name = f.originalname || 'resume';
     const note = String(req.body?.note || '').trim();
-    let doc;
-    let text = '';
+    let extracted;
     try {
-      if (f.mimetype === 'application/pdf' || /\.pdf$/i.test(name)) {
-        const pdf = await getDocumentProxy(new Uint8Array(f.buffer));
-        text = (await extractText(pdf, { mergePages: true })).text || '';
-        // Send the PDF itself: the model reads layout and scanned pages better than extracted text.
-        doc = { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } };
-      } else if (/\.docx$/i.test(name)) {
-        text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
-        doc = { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
-      } else if (/\.(txt|md)$/i.test(name) || f.mimetype?.startsWith('text/')) {
-        text = f.buffer.toString('utf8');
-        doc = { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
-      } else {
-        return res.status(400).json({ error: 'Please upload a PDF, DOCX or TXT file.' });
-      }
+      extracted = await extractDocument(f.buffer, name, f.mimetype);
     } catch (err) {
-      console.error(err);
-      return res.status(400).json({ error: 'Could not read that file. Is it a valid PDF or DOCX?' });
+      if (err instanceof ExtractError) return res.status(400).json({ error: err.message });
+      throw err;
     }
-    if (!text.trim() && doc.source.type === 'text') {
-      return res.status(400).json({ error: 'That file has no readable text.' });
-    }
-    req.s.sourceText += `\n${text}\n${note}`;
+    const { kind, text, links } = extracted;
+    if (!text.trim() && kind !== 'pdf') return res.status(400).json({ error: 'That file has no readable text.' });
+    // Send a PDF itself: the model reads layout and scanned pages better than extracted text.
+    const doc =
+      kind === 'pdf'
+        ? { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } }
+        : { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
+    req.s.sourceText += `\n${text}\n${links.join('\n')}\n${note}`;
     const lowText = text.replace(/\s/g, '').length < 200;
     const prompt =
       `I've uploaded my current CV (${name}).` +
-      (lowText && doc.source.type === 'base64'
-        ? ' (Note from the app: almost no text could be extracted from this PDF, so it may be scanned. Read it carefully and ask about anything unclear.)'
+      (links.length ? `\n(App note: links found in the file, including any hidden behind words like "LinkedIn": ${links.join(', ')}. Put the profile and portfolio links in the header.)` : '') +
+      (lowText && kind === 'pdf'
+        ? ' (App note: almost no text could be extracted from this PDF, so it may be scanned. Read it carefully and ask about anything unclear.)'
         : '') +
       (note ? `\n\n${note}` : '');
     await turn(req, res, [doc, { type: 'text', text: prompt }], `Uploaded ${name}${note ? `: ${note}` : ''}`);
