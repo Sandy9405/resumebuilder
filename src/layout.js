@@ -56,6 +56,18 @@ export async function layoutAvailable() {
   }
 }
 
+/** A fresh, isolated browser context and page (no shared cookies), closed afterwards. */
+export async function withBrowserPage(fn) {
+  const browser = await getBrowser();
+  const context = await browser.newContext({ javaScriptEnabled: true });
+  const page = await context.newPage();
+  try {
+    return await fn(page);
+  } finally {
+    await context.close();
+  }
+}
+
 export function countPdfPages(buf) {
   const s = buf.toString('latin1');
   return (s.match(/\/Type\s*\/Page(?!s)/g) || []).length;

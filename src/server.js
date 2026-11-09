@@ -9,6 +9,9 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume } from '../shared/lint.js';
+import { jdIssues, jdCoverage } from '../shared/jd.js';
+import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
+import { ExtractError } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
 import { renderDocx } from './docx.js';
 import { renderResume } from '../shared/render.js';
@@ -30,8 +33,10 @@ function view(s) {
     id: s.id,
     resume: s.resume,
     layout: s.layout,
-    // Content checks only; visual QA lives in layout (the browser recomputes it live).
-    issues: lintResume(s.resume, s.sourceText),
+    // Content, ATS and job-match checks; visual QA lives in layout (the browser recomputes it live).
+    issues: [...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
+    jd: s.jd ? { source: s.jd.source, title: s.jd.title, company: s.jd.company, chars: s.jd.text.length } : null,
+    coverage: jdCoverage(s.resume),
     chat: s.chat,
     canUndo: s.undo.length > 0,
     canRedo: s.redo.length > 0,
@@ -122,6 +127,7 @@ export function createApp({ client } = {}) {
       undo: [],
       redo: [],
       pendingNotes: [],
+      jd: null,
       busy: false,
       touched: Date.now(),
     };
@@ -178,6 +184,37 @@ export function createApp({ client } = {}) {
         : '') +
       (note ? `\n\n${note}` : '');
     await turn(req, res, [doc, { type: 'text', text: prompt }], `Uploaded ${name}${note ? `: ${note}` : ''}`);
+  });
+
+  // Target a job description: a link, an uploaded file, or pasted text.
+  // The JD is NOT added to sourceText: its numbers and skills are the employer's,
+  // not evidence of what the user did.
+  app.post('/api/sessions/:id/jd', getSession, upload.single('file'), async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const { url, text } = req.body || {};
+    let job;
+    try {
+      if (req.file) job = await jobFromFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+      else if (url) job = await jobFromUrl(url);
+      else job = jobFromText(text);
+    } catch (err) {
+      if (err instanceof JdError || err instanceof ExtractError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    req.s.jd = job;
+    const label = [job.title, job.company].filter(Boolean).join(' at ') || job.source;
+    const doc = { type: 'document', title: `Job description: ${label}`, source: { type: 'text', media_type: 'text/plain', data: job.text } };
+    const ask = `I want to apply for this job (${job.source}). Tailor my resume to it: record the target job and its keywords, show my relevant experience first in the job's language where it is true, and ask me about requirements you can't find evidence for. Do not add anything I haven't told you.`;
+    await turn(req, res, [doc, { type: 'text', text: ask }], `Target job: ${label}`);
+  });
+
+  app.delete('/api/sessions/:id/jd', getSession, async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const before = snapshot(req.s.resume);
+    req.s.jd = null;
+    applyOp(req.s.resume, 'clear_target_job', {});
+    if (pushHistory(req.s, before)) req.s.pendingNotes.push('The user removed the job description. Stop tailoring to it; keep the resume content as it is unless asked.');
+    res.json(view(req.s));
   });
 
   // Direct edits typed into the preview. User-typed text counts as source material.

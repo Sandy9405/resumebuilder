@@ -114,3 +114,18 @@ legend { font-weight: 600; margin-bottom: 10px; }
   .chat { border-right: 0; border-bottom: 1px solid var(--line); min-height: 55vh; }
   .stage { padding: 12px 0; }
 }
+
+.voice-status { font-size: 12.5px; color: var(--muted); padding: 6px 16px 0; }
+.voice-status.live { color: var(--bad); font-variant-numeric: tabular-nums; }
+.jd-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.jd-bar b { font-weight: 600; }
+.jd-dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(560px, calc(100vw - 32px)); background: var(--panel); color: var(--ink); }
+.jd-dialog::backdrop { background: rgba(0, 0, 0, .35); }
+.jd-dialog form { display: flex; flex-direction: column; gap: 10px; padding: 18px; }
+.jd-dialog h2 { margin: 0; font-size: 18px; }
+.jd-dialog label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 14px; }
+.jd-dialog input[type=url], .jd-dialog textarea { font: inherit; font-weight: 400; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+.jd-dialog .hint { margin: 0; font-size: 13px; color: var(--muted); font-weight: 400; }
+.error-text { color: var(--bad); margin: 0; font-size: 13.5px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.quick { flex-wrap: wrap; }

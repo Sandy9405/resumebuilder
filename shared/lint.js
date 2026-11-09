@@ -133,6 +133,8 @@ export function lintResume(resume, sourceText) {
     }
   }
 
+  issues.push(...atsIssues(resume));
+
   for (const [verb, paths] of verbCount) {
     if (paths.length > 2) {
       issues.push({
@@ -145,4 +147,56 @@ export function lintResume(resume, sourceText) {
   }
 
   return issues;
+}
+
+// ---------------------------------------------------------------- ATS
+// Applicant tracking systems find sections by recognisable headings, need
+// contact details in the body text, and parse dates more reliably when one
+// format is used throughout with four-digit years.
+
+const HEADING_WORDS = {
+  summary: /summary|profile|objective|about/i,
+  education: /education|academic|qualification/i,
+  experience: /experience|employment|work|career|professional history|internship/i,
+  projects: /project/i,
+  skills: /skill|technical|competenc|expertise|tools|technolog/i,
+  leadership: /leadership|responsibilit|positions?|por\b|activities|involvement/i,
+  achievements: /achievement|award|honou?r|accomplishment|recognition|scholastic|distinction/i,
+  certifications: /certific|licen|course|training/i,
+  extracurricular: /extra|activities|interests|volunteer|hobbies|co-curricular/i,
+};
+
+function dateStyle(d) {
+  if (/\b(19|20)\d{2}\b/.test(d) === false && /['’]\d{2}\b/.test(d)) return 'two-digit-year';
+  if (/\b\d{1,2}\/(19|20)?\d{2}\b/.test(d)) return 'numeric';
+  if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(19|20)\d{2}/i.test(d)) {
+    return /\b(january|february|march|april|june|july|august|september|october|november|december)\b/i.test(d) ? 'month-long' : 'month-short';
+  }
+  return 'year';
+}
+
+export function atsIssues(resume) {
+  const out = [];
+  const h = resume.header || {};
+  if (!h.email) out.push({ level: 'warn', code: 'ats-contact', message: 'No email address. Applicant tracking systems and recruiters need one in the resume text.', path: 'header.name' });
+  if (!h.phone) out.push({ level: 'info', code: 'ats-contact', message: 'No phone number. Most applications expect one.', path: 'header.name' });
+  const styles = new Map();
+  for (const s of resume.sections || []) {
+    if (s.hidden || !(s.items || []).some((i) => !i.hidden)) continue;
+    const re = HEADING_WORDS[s.kind];
+    if (re && !re.test(s.title)) {
+      out.push({ level: 'warn', code: 'ats-heading', message: `"${s.title}" is not a heading applicant tracking systems recognise for ${s.kind}. A standard title such as "${s.kind[0].toUpperCase() + s.kind.slice(1)}" parses more reliably.`, path: `${s.id}.title` });
+    }
+    if (!['experience', 'projects', 'education', 'leadership'].includes(s.kind)) continue;
+    for (const it of s.items) {
+      if (it.hidden || !it.dates) continue;
+      const st = dateStyle(it.dates);
+      if (st === 'two-digit-year') out.push({ level: 'warn', code: 'ats-dates', message: `"${it.dates}" uses a two-digit year; write the full year (e.g. 2021) so it parses reliably.`, path: `${s.id}.${it.id}.dates` });
+      if (st !== 'year') styles.set(st, [...(styles.get(st) || []), `${s.id}.${it.id}.dates`]);
+    }
+  }
+  if (styles.size > 1) {
+    out.push({ level: 'warn', code: 'ats-dates', message: `Dates mix ${[...styles.keys()].join(' and ')} formats. Use one format throughout, e.g. "Jul 2022 – Present".`, path: [...styles.values()][1][0] });
+  }
+  return out;
 }

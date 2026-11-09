@@ -90,6 +90,31 @@ export const mockClient = {
             'tool_use',
           );
         }
+        const jd = last.content.find?.((b) => b.type === 'document' && String(b.title).startsWith('Job description'));
+        if (jd) {
+          return msg(
+            [
+              { type: 'text', text: '(mock) Read the job description.' },
+              {
+                type: 'tool_use',
+                id: id(),
+                name: 'set_target_job',
+                input: {
+                  title: 'Backend Engineer',
+                  company: 'Example Co',
+                  seniority: '2-4 years',
+                  keywords: [
+                    { term: 'Python', aliases: [], importance: 'must', evidence: 'yes' },
+                    { term: 'PostgreSQL', aliases: ['Postgres'], importance: 'must', evidence: 'yes' },
+                    { term: 'Kubernetes', aliases: [], importance: 'must', evidence: 'unknown' },
+                    { term: 'Kafka', aliases: [], importance: 'nice', evidence: 'no' },
+                  ],
+                },
+              },
+            ],
+            'tool_use',
+          );
+        }
         const fmt = text.match(/\b(iitb|iima|hbs)\b/);
         const pages = /two page|2 page/.test(text) ? 2 : /one page|1 page/.test(text) ? 1 : null;
         if (fmt || pages) {

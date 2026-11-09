@@ -62,7 +62,7 @@ body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:$
 .screen .page.over::after{content:attr(data-label);position:absolute;top:4px;right:6px;font:11px system-ui,sans-serif;color:#fff;background:#c0392b;padding:1px 6px;border-radius:3px}
 @media print{body{background:#fff}.page{margin:0;box-shadow:none;outline:none}.page::after{display:none}}
 
-.blk{padding-top:${gap(0)};text-align:left;hyphens:manual;overflow-wrap:break-word}
+.blk{position:relative;padding-top:${gap(0)};text-align:left;hyphens:manual;overflow-wrap:break-word}
 .blk[data-gap="header"]{padding-top:0}
 .blk[data-gap="section"]{padding-top:${gap(sp.section)};--gap-pt:${sp.section}pt}
 .blk[data-gap="headingAfter"]{padding-top:${gap(sp.headingAfter)};--gap-pt:${sp.headingAfter}pt}
@@ -88,7 +88,6 @@ body{background:${opts.screen ? 'transparent' : '#fff'};color:#111;font-family:$
 /* entries: a two-column grid keeps dates on the content edge; the left side wraps */
 .row{display:grid;grid-template-columns:minmax(0,1fr) max-content;column-gap:10pt;align-items:baseline}
 .row>.r{text-align:right;white-space:nowrap}
-.eh,.bul,.st{position:relative}
 .eh{padding-left:${ind.entryText}mm}
 .mk{position:absolute;left:0;width:0;white-space:nowrap;line-height:var(--lh)}
 /* markers sit on the first text line: offset by the block's own spacing, not the padding edge */

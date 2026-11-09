@@ -112,6 +112,31 @@ Alignment uses real layout components throughout. In the HTML, a two-column grid
   - first-person pronouns;
   - repeated verbs, duplicates and placeholders.
 
+## Tailoring to a job description
+
+The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
+
+- **Links:** the server fetches the page, preferring the schema.org `JobPosting` data most job boards embed. Pages that build the job description with JavaScript are rendered in headless Chromium. LinkedIn usually needs a login, so the app asks for pasted text or a PDF instead of failing silently.
+- **SSRF protection:** every connection, including each redirect, is checked at connect time. Private, loopback, link-local, metadata and IPv4-mapped IPv6 addresses are refused, as are non-standard ports. IP-literal hosts are checked separately, because Node skips the DNS lookup for them.
+- **Honest tailoring:** Claude records the job's keywords with `set_target_job`, marking each one `yes` (the user has it), `no` or `unknown`. The app then counts which keywords the resume actually shows.
+  - Missing keywords the user has are flagged to add.
+  - Unknown ones become questions.
+  - Gaps stay gaps.
+- **The JD is never treated as the user's evidence.** A "5+ years" in the job description does not verify a "5 years" claim on the resume.
+- **No embellishment.** Claude declines requests to invent skills, inflate titles or metrics, or hide keywords in white text, and offers the honest alternatives instead.
+
+## ATS readiness
+
+- PDFs are text-based. Text extracts in reading order: name intact, each heading before its own content, dates on the same line as their entry. A test checks this for every format.
+- Two fixes came from those tests:
+  - Name and heading letter-spacing is kept small, because wide tracking made extractors read "P r i ya".
+  - Every block is painted in a single pass, so headings are no longer written to the PDF before the body text.
+- Content checks flag non-standard section headings, missing email or phone, two-digit years and mixed date formats.
+
+## Voice limits
+
+Each recording is limited to 2 minutes (a countdown shows), and several recordings in a row are fine. Recording stops after 15 seconds without speech; if nothing was said, nothing is sent. If the browser ends recognition early mid-sentence, it restarts automatically within those limits.
+
 ## Code map
 
 ```
@@ -123,6 +148,9 @@ src/tools.js          strict-schema edit tools
 src/ops.js            applies edits; profile; visibility; undo/redo
 src/agent.js          one conversation turn: Claude + tool loop + QA feedback
 src/layout.js         headless Chromium: layout, QA and PDF
+src/jd.js             job description fetch (SSRF-safe), HTML/JSON-LD extraction
+src/extract.js        PDF/DOCX/TXT text extraction
+shared/jd.js          job keyword coverage
 src/docx.js           DOCX export
 src/server.js         Express API
 public/               browser app

@@ -101,6 +101,24 @@ test('layout engine: QA, pagination, density and PDF', async (t) => {
     assert.equal(two.layout.fits, true);
   });
 
+  await t.test('ATS: PDF text reads in order, with names and headings intact', async () => {
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    for (const tpl of TEMPLATES) {
+      const { pdf } = await renderPdf(sampleResume(tpl, 1));
+      const doc = await getDocumentProxy(new Uint8Array(pdf));
+      const text = (await extractText(doc, { mergePages: true })).text.replace(/\s+/g, ' ');
+      assert.match(text, /Priya Raman/i, `${tpl}: name must not be letter-spaced apart`);
+      assert.doesNotMatch(text, /\b(\w ){4,}\w\b/, `${tpl}: no letter-by-letter words`);
+      const at = (re) => text.search(re);
+      const exp = at(/experience/i);
+      const edu = at(/education/i);
+      assert.ok(exp >= 0 && edu >= 0, tpl);
+      assert.ok(at(/Shiprocket/i) > exp, `${tpl}: experience heading precedes its content`);
+      assert.ok(at(/National Institute of/i) > edu, `${tpl}: education heading precedes its content`);
+      assert.ok(at(/Jul 2022/) > at(/Shiprocket/i) && at(/Jul 2022/) < at(/Built a rate-shopping/), `${tpl}: dates stay with their entry`);
+    }
+  });
+
   await t.test('two-page limit with one page of content suggests one page', async () => {
     const l = await measureLayout(sampleResume('hbs', 2));
     assert.ok(l.issues.some((i) => i.code === 'sparse-page'));

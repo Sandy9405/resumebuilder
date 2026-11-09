@@ -120,6 +120,35 @@ export const TOOLS = [
       target_role: { type: 'string', description: 'Only if the user stated one. "" otherwise.' },
     },
   ),
+  tool(
+    'set_target_job',
+    'Record the target job after reading a job description: title, company, seniority, and its important keywords (skills, tools, domain terms, qualifications). For each keyword say whether the user\'s own material shows they have it. The app then checks which keywords the resume shows. Call again if your reading changes, e.g. after the user answers a gap question.',
+    {
+      title: S,
+      company: S,
+      seniority: { type: 'string', description: 'e.g. "entry", "2-4 years", "senior", "lead". "" if unclear.' },
+      keywords: {
+        type: 'array',
+        description: 'The 8-25 terms that matter most, in the JD\'s own wording.',
+        items: {
+          type: 'object',
+          properties: {
+            term: { type: 'string', description: 'As written in the JD, e.g. "SQL", "stakeholder management", "A/B testing"' },
+            aliases: { type: 'array', items: S, description: 'Other spellings that count as the same thing, e.g. ["Postgres"] for "PostgreSQL". [] if none.' },
+            importance: { type: 'string', enum: ['must', 'nice'] },
+            evidence: {
+              type: 'string',
+              enum: ['yes', 'no', 'unknown'],
+              description: 'yes: the user\'s CV or answers show it. no: clearly absent. unknown: not mentioned either way; ask before using it.',
+            },
+          },
+          required: ['term', 'aliases', 'importance', 'evidence'],
+          additionalProperties: false,
+        },
+      },
+    },
+  ),
+  tool('clear_target_job', 'Stop tailoring to a specific job (the user removed the job description).', {}),
   tool('set_format', 'Switch template and/or page count, only when the user asks. Send both values.', {
     template: { type: 'string', enum: ['iitb', 'iima', 'hbs'] },
     pages: { type: 'integer', enum: [1, 2] },

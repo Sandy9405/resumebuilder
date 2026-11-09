@@ -135,9 +135,11 @@ export const TEMPLATES = {
     // Body set at 10.5pt: EB Garamond at 10pt reads small on screen and in print.
     size: { base: 10.5, min: 10, name: 16, heading: 12.5, contact: 10, table: 10.5 },
     lineHeight: 1.18,
-    header: { layout: 'left-rule', nameCase: 'small-caps', nameLetterSpacingPt: 2.5, rule: 'solid' },
+    // DEPARTS: reference tracks the name at 2.5pt and headings at 2pt. Above ~0.05em,
+    // PDF text extraction (and so ATS parsing) splits words into letters: "P r i ya".
+    header: { layout: 'left-rule', nameCase: 'small-caps', nameLetterSpacingPt: 0.8, rule: 'solid' },
     // Centered small caps between dotted rules (measured w:pBdr top/bottom dotted sz=4).
-    heading: { style: 'dotted-rules', fill: null, align: 'center', case: 'small-caps', letterSpacingPt: 2, padPt: [1, 0] },
+    heading: { style: 'dotted-rules', fill: null, align: 'center', case: 'small-caps', letterSpacingPt: 0.6, padPt: [1, 0] },
     educationTable: null, // education uses the standard entry layout
     entry: {
       // "ALLIED HOSPITALS, Leominster, DE ............ 1994 - Present" (org bold caps)
