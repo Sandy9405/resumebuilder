@@ -41,6 +41,15 @@ export const AI_PHRASES = [
   [/\b(world|best)[- ]class\b/i, 'world-class'],
   [/\b(innovative|holistic|robust|impactful)\b/i, 'vague adjective'],
   [/\bmeticulous(ly)?\b/i, 'meticulous'],
+  // Self-descriptions written for effect: say what was done instead.
+  [/\bbuilt for the\b/i, 'built for the… (slogan)'],
+  [/\bdefault[- ]owner\b/i, 'default-owner (slogan)'],
+  [/\bstructure (to|from) ambiguity\b/i, 'structure from ambiguity (slogan)'],
+  [/\bhold(s)? real numbers\b/i, 'hold real numbers (slogan)'],
+  [/\bby default\b/i, 'by default (slogan)'],
+  [/\b(serial|natural)[- ](operator|builder|leader)\b/i, 'serial operator (slogan)'],
+  [/\b(recruited|brought|rallied) to the (work|cause|mission)\b/i, 'recruited to the work (written for effect)'],
+  [/\b(wear(s|ing)? many hats|move the needle|rock ?star|ninja|guru|obsessed with)\b/i, 'cliché'],
 ];
 
 const PLACEHOLDER = /\[[^\]]*\]|\bTBD\b|\bX+%|\bN\/A\b|lorem ipsum|\?\?/i;
@@ -56,9 +65,9 @@ const NUMBER_WORDS = {
   first: 1, second: 2, third: 3, fourth: 4, fifth: 5, double: 2, twice: 2, half: 50,
 };
 
-const NUM_RE = /\d+(?:[.,]\d+)*/g;
+export const NUM_RE = /\d+(?:[.,]\d+)*/g;
 
-function normNum(s) {
+export function normNum(s) {
   // "1,20,000" and "120,000" -> "120000"; "1.50" -> "1.5"; "07" -> "7"
   let n = s.replace(/,/g, '');
   if (n.includes('.')) n = n.replace(/0+$/, '').replace(/\.$/, '');
@@ -82,6 +91,8 @@ export function sourceNumbers(sourceText) {
 }
 
 /** Every piece of text in the resume body, with a path for pointing at it. */
+const unbold = (s) => String(s ?? '').replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '$1');
+
 export function* resumeTexts(resume) {
   const h = resume.header || {};
   if (h.tagline) yield ['header.tagline', h.tagline, 'tagline'];
@@ -90,10 +101,10 @@ export function* resumeTexts(resume) {
     for (const it of s.items || []) {
       if (it.hidden) continue;
       for (const f of ['heading', 'org', 'location', 'dates', 'detail', 'note']) {
-        if (it[f]) yield [`${s.id}.${it.id}.${f}`, it[f], f];
+        if (it[f]) yield [`${s.id}.${it.id}.${f}`, unbold(it[f]), f];
       }
       for (let i = 0; i < (it.bullets || []).length; i++) {
-        yield [`${s.id}.${it.id}.bullets.${i}`, it.bullets[i], 'bullet', (it.locked || []).includes(it.bullets[i])];
+        yield [`${s.id}.${it.id}.bullets.${i}`, unbold(it.bullets[i]), 'bullet', (it.locked || []).includes(it.bullets[i])];
       }
     }
   }
@@ -153,6 +164,11 @@ export function lintResume(resume, sourceText) {
         issues.push({ level: 'warn', code: 'ste-passive', message: `Passive voice; say who did it: "${short}"`, path });
       }
       if (/,\s+(\w+ly\s+)?\w{3,}ing\b/.test(text)) ingTails++;
+      // "Structure from ambiguity: conceptualised…" - a label in front of the sentence is filler.
+      const label = text.match(/^\s*(\*\*)?([^:*]{3,45})(\*\*)?:\s/);
+      if (label && label[2].trim().split(/\s+/).length <= 7) {
+        issues.push({ level: 'warn', code: 'label-leadin', message: `Starts with a label ("${label[2].trim()}:"). Lead with the action and bold the result instead: "${short}"`, path });
+      }
       if (/[—]|\s-\s/.test(text)) issues.push({ level: 'info', code: 'ste-punctuation', message: `Use a comma or a separate sentence instead of a dash: "${short}"`, path });
       if (FIRST_PERSON.test(text)) {
         issues.push({ level: 'warn', code: 'first-person', message: `First-person pronoun in a bullet: "${short}"`, path });

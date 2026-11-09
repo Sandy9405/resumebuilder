@@ -109,10 +109,54 @@ legend { font-weight: 600; margin-bottom: 10px; }
 .paper iframe { border: 0; display: block; background: transparent; }
 .spec-note { margin: 0; padding: 6px 16px 10px; font-size: 12px; color: var(--muted); text-align: center; }
 
+/* Changes log, collapsed by default */
+details.changes { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+details.changes summary { cursor: pointer; }
+details.changes ul { margin: 4px 0 0; padding-left: 18px; }
+
+.mobile-tabs { display: none; }
+
+/* Phones and small tablets: one pane at a time, full height, thumb-sized controls */
 @media (max-width: 860px) {
-  .workspace { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
-  .chat { border-right: 0; border-bottom: 1px solid var(--line); min-height: 55vh; }
-  .stage { padding: 12px 0; }
+  .workspace { display: flex; flex-direction: column; height: 100dvh; }
+  .mobile-tabs { display: flex; flex: 0 0 auto; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .mobile-tabs button { flex: 1; border: 0; border-radius: 0; background: none; padding: 12px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; }
+  .mobile-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .mobile-tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-left: 4px; vertical-align: middle; }
+  .mobile-tabs .dot[hidden] { display: none; }
+  /* Off-screen, not display:none: the preview iframe must keep laying out
+     (the page engine measures text) while the chat tab is showing. */
+  body[data-tab="chat"] .preview { position: absolute; left: -200vw; top: 0; width: 100vw; height: 100dvh; visibility: hidden; }
+  body[data-tab="resume"] .chat { display: none; }
+  .chat, .preview { flex: 1 1 auto; min-height: 0; border-right: 0; }
+  .chat-head { padding: 8px 12px; }
+  .chat-head b { display: none; }
+  .messages { padding: 12px; }
+  .msg { max-width: 100%; }
+  .quick { padding: 8px 12px 0; overflow-x: auto; flex-wrap: nowrap; }
+  .quick button { flex: 0 0 auto; }
+  .composer { padding: 8px 12px; }
+  .composer textarea { font-size: 16px; } /* stops iOS zooming on focus */
+  .composer-side .primary { min-height: 44px; }
+  .mic { width: 48px; height: 48px; }
+  .speak-toggle { padding: 0 12px 10px; }
+  /* Two rows: format + length, then actions; the size badge sits under them. */
+  .toolbar { padding: 8px 12px; gap: 6px; font-size: 14px; }
+  .toolbar select { flex: 1 1 calc(50% - 6px); max-width: none; min-height: 40px; order: 1; }
+  .toolbar #pagesSel { flex: 0 0 96px; }
+  .toolbar { gap: 5px; }
+  .toolbar button, .toolbar .toggle { order: 2; min-height: 40px; padding: 6px 8px; }
+  .toolbar .icon { padding: 6px 9px; }
+  .toolbar #redoBtn { display: none; } /* undo stays; redo is rarely needed on a phone */
+  .toolbar #fitBadge { order: 3; flex: 1 1 100%; text-align: center; border: 0; padding: 0; }
+  .toolbar .spacer { display: none; }
+  .assess, .jd-bar, .hidden-note { padding-left: 12px; padding-right: 12px; }
+  .assess { max-height: 34vh; overflow-y: auto; }
+  .stage { padding: 8px 0; }
+  .spec-note { display: none; }
+  .setup { padding: 20px 16px 48px; }
+  .setup h1 { font-size: 24px; }
+  .big { width: 100%; }
 }
 
 .voice-status { font-size: 12.5px; color: var(--muted); padding: 6px 16px 0; }
@@ -141,3 +185,16 @@ legend { font-weight: 600; margin-bottom: 10px; }
 .assess .muted { color: var(--muted); }
 .assess .q { font-style: italic; }
 .assess button { padding: 3px 10px; font-size: 13px; }
+
+.evidence { padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13.5px; }
+.evidence summary { cursor: pointer; font-weight: 600; }
+.evidence ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.evidence li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.evidence .term { font-weight: 600; }
+.evidence .st { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.evidence .st.shown { color: var(--ok); }
+.evidence .st.ask { color: var(--accent); }
+.evidence .st.have { color: var(--warn); }
+.evidence .st.gap { color: var(--muted); }
+.evidence button { padding: 3px 10px; font-size: 13px; }
+@media (max-width: 860px) { .evidence { padding: 8px 12px; max-height: 30vh; overflow-y: auto; } .evidence button { min-height: 36px; } }

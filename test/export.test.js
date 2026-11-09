@@ -5,7 +5,7 @@ import { renderDocx } from '../src/docx.js';
 import { measureLayout, renderPdf, layoutAvailable, closeLayout } from '../src/layout.js';
 import { sampleResume } from './fixtures/sample-resume.js';
 
-const TEMPLATES = ['iitb', 'iima', 'hbs'];
+const TEMPLATES = ['iitb', 'iima', 'hbs', 'pro'];
 
 test('render escapes HTML, embeds the engine, and marks editable text', () => {
   for (const t of TEMPLATES) {
@@ -117,6 +117,13 @@ test('layout engine: QA, pagination, density and PDF', async (t) => {
       assert.ok(at(/National Institute of/i) > edu, `${tpl}: education heading precedes its content`);
       assert.ok(at(/Jul 2022/) > at(/Shiprocket/i) && at(/Jul 2022/) < at(/Built a rate-shopping/), `${tpl}: dates stay with their entry`);
     }
+  });
+
+  await t.test('a fragment spilling onto its own line in a table cell is flagged ("Top 1%")', async () => {
+    const r = sampleResume('iima', 1);
+    r.sections[1].items[0].note = "Dean's List · Rank 2 / 160 (Top 1%)";
+    const l = await measureLayout(r);
+    assert.ok(l.issues.some((i) => i.code === 'table-wrap' && /Top 1%/.test(i.message)));
   });
 
   await t.test('two-page limit with one page of content suggests one page', async () => {

@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo, applyAnyway } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
-import { jdIssues, jdCoverage } from '../shared/jd.js';
+import { jdIssues, jdCoverage, evidenceRequests } from '../shared/jd.js';
+import { compareIssues, comparison } from '../shared/compare.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
 import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
@@ -32,9 +33,11 @@ function view(s) {
     resume: s.resume,
     layout: s.layout,
     // Content, ATS and job-match checks; visual QA lives in layout (the browser recomputes it live).
-    issues: [...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
+    issues: [...compareIssues(s.resume, s.cvText), ...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
+    compare: s.resume.sections.length ? comparison(s.resume, s.cvText) : null,
     jd: s.jd ? { source: s.jd.source, title: s.jd.title, company: s.jd.company, chars: s.jd.text.length } : null,
     coverage: jdCoverage(s.resume),
+    evidence: s.resume.target ? evidenceRequests(s.resume) : null,
     // Measured before/after quality, when the user uploaded a CV.
     quality: s.baseline && s.resume.sections.length ? { before: s.baseline, after: resumeCounts(s.resume) } : null,
     chat: s.chat,
@@ -113,13 +116,13 @@ export function createApp({ client } = {}) {
   }
 
   app.post('/api/sessions', (req, res) => {
-    const { template, pages, buildMode, purpose } = req.body || {};
+    const { template, pages, buildMode, purpose, stage } = req.body || {};
     const mode = ['upload', 'talk', 'both'].includes(buildMode) ? buildMode : 'talk';
     const opener = OPENERS[mode];
     const s = {
       id: randomUUID(),
       opener,
-      resume: emptyResume({ template, pages: Number(pages), buildMode: mode, purpose }),
+      resume: emptyResume({ template, pages: Number(pages), buildMode: mode, purpose, stage }),
       messages: [],
       chat: [{ role: 'assistant', text: opener }],
       sourceText: '',
@@ -129,6 +132,7 @@ export function createApp({ client } = {}) {
       pendingNotes: [],
       jd: null,
       baseline: null,
+      cvText: '',
       busy: false,
       touched: Date.now(),
     };
@@ -167,7 +171,10 @@ export function createApp({ client } = {}) {
         ? { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } }
         : { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
     req.s.sourceText += `\n${text}\n${links.join('\n')}\n${note}`;
-    if (text.trim()) req.s.baseline = cvTextCounts(text);
+    if (text.trim()) {
+      req.s.baseline = cvTextCounts(text);
+      req.s.cvText = `${req.s.cvText}\n${text}`.trim();
+    }
     const lowText = text.replace(/\s/g, '').length < 200;
     const prompt =
       `I've uploaded my current CV (${name}).` +
@@ -199,6 +206,27 @@ export function createApp({ client } = {}) {
     const doc = { type: 'document', title: `Job description: ${label}`, source: { type: 'text', media_type: 'text/plain', data: job.text } };
     const ask = `I want to apply for this job (${job.source}). Tailor my resume to it: record the target job and its keywords, show my relevant experience first in the job's language where it is true, and ask me about requirements you can't find evidence for. Do not add anything I haven't told you.`;
     await turn(req, res, [doc, { type: 'text', text: ask }], `Target job: ${label}`);
+  });
+
+  // "I don't have this" on a job requirement: recorded before the model runs, so
+  // the skip is guaranteed to stick; then the agent moves to the next item.
+  app.post('/api/sessions/:id/requirement', getSession, async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const term = String(req.body?.term || '');
+    const before = snapshot(req.s.resume);
+    try {
+      applyOp(req.s.resume, 'mark_requirement', { term, outcome: 'no_evidence' });
+    } catch (err) {
+      if (err instanceof OpError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    pushHistory(req.s, before);
+    await turn(
+      req,
+      res,
+      [{ type: 'text', text: `(App note: the user pressed "I don't have this" for "${term}"; it is already recorded as no_evidence.) I don't have anything for ${term}. Skip it.` }],
+      `I don't have this: ${term}`,
+    );
   });
 
   // The user chose to apply despite a weak fit: tailor honestly anyway.

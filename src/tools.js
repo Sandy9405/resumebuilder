@@ -19,8 +19,16 @@ const ITEM = {
     location: S,
     dates: { type: 'string', description: 'As the user gave them, e.g. "Jun 2022 – Present" or "2019 – 2023"' },
     detail: { type: 'string', description: 'One line: CPI/GPA/percentage for education, tech stack or guide for projects, comma-separated list for skills' },
-    note: { type: 'string', description: 'Education only: board/university (IITB table) or distinction such as "Institute Gold Medal" (IIMA table). Otherwise "".' },
-    bullets: { type: 'array', items: S, description: 'Action–Project–Result bullets shown on the resume. [] if none.' },
+    note: {
+      type: 'string',
+      description:
+        'Education: board/university (IITB table) or a distinction such as "Institute Gold Medal" (IIMA table). Jobs and projects: one short recognition line shown under the bullets, e.g. "Best Performer, New Business 2019 · Manager\'s Choice Award 2017". Otherwise "".',
+    },
+    bullets: {
+      type: 'array',
+      items: S,
+      description: 'Action–Project–Result bullets shown on the resume. [] if none. **double asterisks** mark a short bold phrase (a key result or a lead-in), at most one per bullet.',
+    },
     reserve_bullets: {
       type: 'array',
       items: S,
@@ -199,9 +207,14 @@ export const TOOLS = [
       better_fit_roles: { type: 'array', items: S, description: 'For weak fits: up to three roles their real experience fits better. [] otherwise.' },
     },
   ),
+  tool(
+    'mark_requirement',
+    'Record the user\'s answer to an evidence request for one job requirement: has_evidence (they gave a story or proof, which you have written into the resume) or no_evidence (they said they have none, or asked to skip). A no_evidence requirement is never asked about again.',
+    { term: { type: 'string', description: 'The requirement exactly as recorded with set_target_job.' }, outcome: { type: 'string', enum: ['has_evidence', 'no_evidence'] } },
+  ),
   tool('clear_target_job', 'Stop tailoring to a specific job (the user removed the job description).', {}),
   tool('set_format', 'Switch template and/or page count, only when the user asks. Send both values.', {
-    template: { type: 'string', enum: ['iitb', 'iima', 'hbs'] },
+    template: { type: 'string', enum: ['iitb', 'iima', 'hbs', 'pro'] },
     pages: { type: 'integer', enum: [1, 2] },
   }),
 ];

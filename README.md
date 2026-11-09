@@ -60,7 +60,26 @@ Sessions live in memory, so a redeploy or restart ends any resume in progress. L
 
 Voice needs no key: speech recognition and read-aloud both run in the user's browser.
 
-## The three formats
+## Career stage decides the formats on offer
+
+Setup asks **"Where are you in your career?"** and only shows the formats that suit the answer. Any format stays available from the toolbar later.
+
+| Answer | Formats offered |
+|---|---|
+| Student or recent graduate (last two years) | IITB, IIMA, HBS |
+| Working, under 5 years | Experienced Professional (recommended), HBS |
+| 5+ years, or switching jobs | Experienced Professional (recommended), HBS |
+
+**Experienced Professional** comes from the product owner's own CV. It's A4, in Calibri (bundled as Carlito, which has identical character widths), with a navy name and section rules, grey subtitle and dates. The layout:
+
+- a short Profile paragraph;
+- Experience lines as **Role** · Company, with dates right-aligned to the margin, results-first bullets, and an optional italic recognition line under a role;
+- then Education;
+- then Skills grouped by category.
+
+Education always comes after experience, and school results are dropped. Bullets may **bold** one short phrase (`**…**`) in every format.
+
+## The formats
 
 Each format's design comes from the reference resumes, measured from both the document internals and the rendered pages. The specs live in `shared/templates.js`, with the measurements noted inline.
 
@@ -134,6 +153,31 @@ The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
   - Every block is painted in a single pass, so headings are no longer written to the PDF before the body text.
 - Content checks flag non-standard section headings, missing email or phone, two-digit years and mixed date formats.
 
+## Do no harm: the result must beat the original
+
+This came from a real test. For a "Product Manager – Applied AI" job description, a 10-year professional's original CV scored 6/10 and the app's version scored 5/10. Root causes, and the fix for each:
+
+| Root cause | Fix |
+|---|---|
+| Academic format put education first for an experienced person | Section order depends on career stage: working professionals get experience before education in every format |
+| The profile was deleted instead of rewritten for the target | Prompt: keep and rewrite the profile, and aim the sub-header at the target in true terms. Checks: `summary-dropped`, `headline-untargeted` |
+| Compression dropped facts ("headcount 5 to 1", "900-line"), and nothing noticed | `fact-dropped`: every number in the uploaded CV must stay on the page or in reserve |
+| The one-page fill rule added a Hobbies section to a senior resume | Fill is stage-aware: professionals get their own dropped material back first. `low-value-section` flags hobbies and school results for professionals |
+| No real tailoring: product evidence was framed as operations, and the job's core asks were never raised | Prompt: translate evidence into the target role's terms, ask about every unconfirmed required keyword before finishing, plus an Applied-AI question set |
+| Evaluator notes: "Railway" was dropped, labels like "Structure from ambiguity:", lines written for effect, "Top 1%" wrapping alone in a table cell | `fact-dropped` now also covers named tools, clients and products. `label-leadin` (bold the result, not a label). Slogan patterns flagged as generic phrasing. `table-wrap` visual check |
+| No comparison with the input | A "Compared with your original" panel (facts kept, job keywords before → after) and the same numbers in the agent's feedback |
+
+## Evidence requests: a story for every requirement
+
+When a job description or link names a requirement the CV doesn't show (evals, B2C launches, prototyping, …), the agent asks for evidence, one requirement at a time, and says why:
+
+> "This job requires evals. Can you tell me about a time you did this, or share any proof I can include, like a result, a project, a number or a link? If you don't have anything, just say skip."
+
+- **If the user has a story,** the agent asks at most one follow-up (usually for the result), writes it into the right role, and records it with `mark_requirement` (`has_evidence`).
+- **If they say no or skip,** it's recorded as `no_evidence` and becomes an honest gap. It's never asked again, even when the job is re-read, and never added to the resume.
+- **Only required items are asked about,** in the job's order, capped at 6 questions so the chat never becomes an interrogation. The server tells the agent which item is next, so nothing is skipped by accident.
+- **The "What this job requires" panel** lists each required item as *On your resume*, *Needs your story*, *You have it: adding* or *Skipped: honest gap*. Open items have one-tap **I have a story** (pre-fills the chat) and **I don't have this** buttons. A skip is recorded on the server before the model runs, so it's guaranteed to stick.
+
 ## Honest verdicts
 
 - **Purpose.** Setup asks what the resume is for: a specific job (opens the job description dialog), a type of role (named), or general use. If it's still unknown, the agent asks once and records the answer with `set_purpose`. A general resume gets no fit assessment.
@@ -161,6 +205,11 @@ The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
   - extra AI-slop terms flagged.
 
   Technical terms and the target job's keywords are exempt from the vocabulary rules. The 60–70% plain / 30–40% terms split is guidance in the prompt; it isn't measured, because it can't be measured reliably.
+
+## Replies and mobile
+
+- **Replies focus on the user's next step**, not the app's process. The resume updates live, so the agent doesn't narrate its edits. Each reply ends with one clear instruction (what to tell, upload or click), or "Nothing else needed. Download the PDF." The edit log under a reply is collapsed behind "Show changes".
+- **Phones** (≤ 860 px wide) get one pane at a time, with Chat and Resume tabs. A dot appears on Resume when it changes. The composer stays pinned at the bottom, controls are thumb-sized, the toolbar fits on two rows, and the text field is 16 px so iOS doesn't zoom. The hidden preview is moved off-screen rather than set to `display: none`, so the page engine can still measure text while you chat.
 
 ## Voice limits
 

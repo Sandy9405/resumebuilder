@@ -9,7 +9,8 @@ import { TOOLS } from './tools.js';
 import { applyOp, OpError, snapshot, pushHistory } from './ops.js';
 import { validate } from './validate.js';
 import { lintResume } from '../shared/lint.js';
-import { jdCoverage, jdIssues } from '../shared/jd.js';
+import { jdCoverage, jdIssues, evidenceRequests } from '../shared/jd.js';
+import { compareIssues, comparison } from '../shared/compare.js';
 import { measureLayout, describeFit } from './layout.js';
 import { getTemplate } from '../shared/templates.js';
 
@@ -40,13 +41,24 @@ function stateBlock(session) {
     `Build mode: ${r.settings.buildMode}. Format: ${t.label} (id ${t.id}), ${t.page.name} paper. Page limit: ${r.settings.pages}.`,
     `Layout: ${session.layout ? describeFit(session.layout) : 'not measured yet.'}`,
     hidden.length ? `Hidden for length (kept in data): ${hidden.join('; ')}.` : 'Hidden for length: nothing.',
+    `Career stage (user's own answer): ${{ recent: 'student or recent graduate (last two years)', working: 'working, under 5 years', experienced: '5+ years of experience, or switching jobs' }[r.settings.stage] || 'not asked'}.`,
     `Purpose: ${purposeLine(r.settings.purpose)}`,
     `Assessment: ${JSON.stringify(r.assessment || {})}`,
+    `Evidence request: ${evidenceLine(r)}`,
     `Profile: ${JSON.stringify(r.profile)}`,
     `Target job: ${r.target ? `${JSON.stringify({ title: r.target.title, company: r.target.company, seniority: r.target.seniority })}. ${coverageLine(r)}` : session.jd ? 'a job description was provided but set_target_job has not been called yet.' : 'none (general resume).'}`,
     JSON.stringify({ header: r.header, sections: r.sections }),
     '</resume_state>',
   ].join('\n');
+}
+
+function evidenceLine(r) {
+  if (!r.target) return 'none (no target job).';
+  const e = evidenceRequests(r);
+  if (e.next) {
+    return `next required item without evidence: "${e.next.term}" (${e.open} open, ${e.asked} asked so far, cap ${e.cap}). Unless the user is answering something else or has ended the interview, ask about it now, exactly in this shape: "This job requires ${e.next.term}. Can you tell me about a time you did this, or share any proof I can include, like a result, a project, a number or a link? If you don't have anything, just say skip." Then record the answer with mark_requirement.`;
+  }
+  return e.open ? `question cap reached (${e.asked} asked); ask about more only if the user wants to.` : 'all required items are evidenced or skipped.';
 }
 
 function purposeLine(p) {
@@ -72,13 +84,22 @@ function coverageLine(r) {
 
 /** Content checks + visual QA, condensed for the model. */
 export function qaSummary(session) {
-  const content = [...lintResume(session.resume, session.sourceText), ...jdIssues(session.resume).filter((i) => i.code === 'jd-missing')];
+  // "Do no harm" findings first: lost facts, deleted positioning, low-value filler.
+  const content = [
+    ...compareIssues(session.resume, session.cvText),
+    ...lintResume(session.resume, session.sourceText),
+    ...jdIssues(session.resume).filter((i) => i.code === 'jd-missing' || i.code === 'jd-ask'),
+  ];
   const visual = session.layout?.issues || [];
   const all = [...visual.filter((i) => i.level === 'error'), ...content, ...visual.filter((i) => i.level !== 'error')];
   const lines = all.slice(0, 15).map((i) => `- [${i.code}] ${i.message}${i.path ? ` (at ${i.path})` : ''}`);
   if (all.length > 15) lines.push(`- ...and ${all.length - 15} more`);
   const job = session.resume.target ? `\nJob match: ${coverageLine(session.resume)}` : '';
-  return `Layout: ${describeFit(session.layout)}${job}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
+  const cmp = comparison(session.resume, session.cvText);
+  const vs = cmp
+    ? `\nCompared with the uploaded CV: facts kept ${cmp.facts.kept}/${cmp.facts.total}${cmp.keywords ? `; job keywords ${cmp.keywords.before} -> ${cmp.keywords.after} of ${cmp.keywords.total}` : ''}. The result must be better than the original on fit and evidence, never worse.`
+    : '';
+  return `Layout: ${describeFit(session.layout)}${job}${vs}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
 }
 
 const textOf = (content) =>

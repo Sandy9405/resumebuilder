@@ -1,5 +1,5 @@
 import { renderResume } from '/shared/render.js';
-import { TEMPLATES, getTemplate, MM_TO_PX } from '/shared/templates.js';
+import { TEMPLATES, getTemplate, MM_TO_PX, FORMATS_BY_STAGE } from '/shared/templates.js';
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -25,13 +25,23 @@ async function api(path, opts = {}) {
 }
 
 // ---------- Setup ----------
-function buildSetup() {
-  $('#templateCards').innerHTML = Object.values(TEMPLATES)
-    .map(
-      (t, i) => `<label class="card"><input type="radio" name="template" value="${t.id}" ${i === 0 ? 'checked' : ''}>
-      <b>${t.label}</b><span>${t.blurb}</span></label>`,
-    )
+// Recent graduates see the academic formats; working professionals see
+// experience-first formats. Any format stays available from the toolbar later.
+function renderFormatCards() {
+  const stage = document.querySelector('input[name="stage"]:checked')?.value || 'recent';
+  const ids = FORMATS_BY_STAGE[stage] || Object.keys(TEMPLATES);
+  $('#templateCards').innerHTML = ids
+    .map((id, i) => {
+      const t = TEMPLATES[id];
+      return `<label class="card"><input type="radio" name="template" value="${t.id}" ${i === 0 ? 'checked' : ''}>
+      <b>${t.label}${i === 0 && stage !== 'recent' ? ' (recommended)' : ''}</b><span>${t.blurb}</span></label>`;
+    })
     .join('');
+}
+
+function buildSetup() {
+  renderFormatCards();
+  document.querySelectorAll('input[name="stage"]').forEach((r) => r.addEventListener('change', renderFormatCards));
   $('#templateSel').innerHTML = Object.values(TEMPLATES).map((t) => `<option value="${t.id}">${t.label}</option>`).join('');
 }
 
@@ -44,7 +54,7 @@ async function start() {
     $('#purposeRole').placeholder = 'Type the role first';
     return;
   }
-  const body = { buildMode: val('buildMode'), template: val('template'), pages: Number(val('pages')), purpose: { type: purposeType, role } };
+  const body = { buildMode: val('buildMode'), stage: val('stage'), template: val('template'), pages: Number(val('pages')), purpose: { type: purposeType, role } };
   S = await api('/api/sessions', { method: 'POST', body });
   store.set('sessionId', S.id);
   $('#speakToggle').checked = body.buildMode !== 'upload';
@@ -64,15 +74,21 @@ function addBubble(role, text, changes) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
   div.textContent = text;
+  // Users need the result, not the log: edits are tucked away, collapsed.
   if (changes?.length) {
+    const det = document.createElement('details');
+    det.className = 'changes';
+    const sum = document.createElement('summary');
+    sum.textContent = 'Show changes';
+    det.appendChild(sum);
     const ul = document.createElement('ul');
-    ul.className = 'changes';
     for (const c of changes) {
       const li = document.createElement('li');
       li.textContent = c;
       ul.appendChild(li);
     }
-    div.appendChild(ul);
+    det.appendChild(ul);
+    div.appendChild(det);
   }
   $('#messages').appendChild(div);
   $('#messages').scrollTop = $('#messages').scrollHeight;
@@ -263,9 +279,11 @@ function speak(text) {
 
 // ---------- Preview ----------
 function applyView(v, fromTurn = false) {
+  const changed = JSON.stringify(v.resume) !== JSON.stringify(S?.resume);
   S = { ...S, ...v };
   if (fromTurn) setBusy(false);
   render();
+  if (changed) markResumeUpdated();
 }
 
 function render() {
@@ -279,6 +297,7 @@ function render() {
   $('#redoBtn').disabled = !S.canRedo;
   renderProfile();
   renderJd();
+  renderEvidence();
   renderAssessment();
   renderHiddenNote();
   renderPreview();
@@ -307,6 +326,54 @@ function renderJd() {
     if (c.nice.total) parts.push(`Nice-to-have: ${c.nice.matched}/${c.nice.total}`);
   } else parts.push('Analysing…');
   $('#jdText').innerHTML = parts.join(' · ');
+}
+
+// "What this job asks for": every required item with its evidence status, and
+// one-tap answers for the ones still open.
+function renderEvidence() {
+  const kws = (S.resume.target?.keywords || []).filter((k) => k.importance === 'must');
+  const box = $('#evidenceBox');
+  box.hidden = !kws.length;
+  if (!kws.length) return;
+  const shown = new Set(S.coverage?.matched || []);
+  const rows = kws.map((k) => {
+    let st;
+    let actions = '';
+    if (shown.has(k.term)) st = '<span class="st shown">On your resume</span>';
+    else if (k.status === 'skipped') st = '<span class="st gap">Skipped: honest gap</span>';
+    else if (k.evidence === 'yes') st = '<span class="st have">You have it: adding</span>';
+    else if (k.evidence === 'no') st = '<span class="st gap">Gap</span>';
+    else {
+      st = '<span class="st ask">Needs your story</span>';
+      actions = `<button type="button" class="ghost" data-story="${escapeHtml(k.term)}">I have a story</button><button type="button" class="ghost" data-skip="${escapeHtml(k.term)}">I don't have this</button>`;
+    }
+    return `<li><span class="term">${escapeHtml(k.term)}</span>${st}${actions}</li>`;
+  });
+  const done = kws.filter((k) => shown.has(k.term) || k.status === 'skipped' || k.evidence === 'no').length;
+  // Open by default on desktop; collapsed on phones, where panels compete with the page.
+  const prev = box.querySelector('details');
+  const open = prev ? prev.open : !isPhone();
+  box.innerHTML = `<details${open ? ' open' : ''}><summary>What this job requires (${done} of ${kws.length} covered)</summary><ul>${rows.join('')}</ul></details>`;
+  box.querySelectorAll('[data-story]').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (isPhone()) showTab('chat');
+      $('#input').value = `About ${b.dataset.story}: `;
+      $('#input').focus();
+    }),
+  );
+  box.querySelectorAll('[data-skip]').forEach((b) => b.addEventListener('click', () => skipRequirement(b.dataset.skip)));
+}
+
+async function skipRequirement(term) {
+  if (busy) return;
+  addBubble('user', `I don't have this: ${term}`);
+  setBusy(true);
+  try {
+    applyView(await api(`/api/sessions/${S.id}/requirement`, { method: 'POST', body: { term } }), true);
+  } catch (err) {
+    setBusy(false);
+    addBubble('error', err.message);
+  }
 }
 
 function openJdDialog(error = '') {
@@ -359,6 +426,13 @@ function renderAssessment() {
         `<span>${escapeHtml(a.cv.summary)}</span>${moved.length ? `<span class="muted">Measured: ${escapeHtml(moved.join(' · '))}</span>` : ''}</div>`,
     );
   }
+  const cmp = S.compare;
+  if (cmp?.facts) {
+    const bits = [`Facts kept ${cmp.facts.kept}/${cmp.facts.total}${cmp.facts.dropped.length ? ` (missing: ${cmp.facts.dropped.slice(0, 5).join(', ')})` : ''}`];
+    if (cmp.keywords) bits.push(`job keywords ${cmp.keywords.before} → ${cmp.keywords.after} of ${cmp.keywords.total}`);
+    const worse = cmp.facts.dropped.length > 0 || (cmp.keywords && cmp.keywords.after < cmp.keywords.before);
+    parts.push(`<div class="row"><span class="tag ${worse ? 'weak' : 'good'}">Compared with your original</span><span>${escapeHtml(bits.join(' · '))}</span></div>`);
+  }
   if (a.fit) {
     const f = a.fit;
     const weak = f.level === 'weak' || f.level === 'very_weak';
@@ -375,6 +449,7 @@ function renderAssessment() {
     );
   }
   $('#assessBar').hidden = !parts.length;
+  // (comparison row is shown even before an assessment exists)
   $('#assessBar').innerHTML = parts.join('');
   $('#applyAnyway')?.addEventListener('click', applyAnywayClick);
 }
@@ -530,9 +605,9 @@ const label = (c) =>
     'over-limit': 'Too long', 'outside-boundary': 'Outside margins', overlap: 'Overlap', 'date-collision': 'Date collision',
     'date-misaligned': 'Date alignment', 'indent-inconsistent': 'Indentation', 'orphan-heading': 'Page break',
     'blank-page': 'Blank page', 'table-overflow': 'Table', justified: 'Word spacing', 'font-fallback': 'Font',
-    underfilled: 'Page not full', 'header-incomplete': 'Header', 'links-missing': 'Links',
+    underfilled: 'Page not full', 'fact-dropped': 'Fact lost', 'summary-dropped': 'Profile removed', 'headline-untargeted': 'Positioning', 'low-value-section': 'Low-value section', 'header-incomplete': 'Header', 'links-missing': 'Links',
     'ste-length': 'Too long', 'ste-passive': 'Passive voice', 'ste-pattern': 'Repetitive shape', 'ste-punctuation': 'Punctuation',
-    'jd-missing': 'Job keyword', 'jd-ask': 'Job question', 'jd-gap': 'Job gap',
+    'jd-missing': 'Job keyword', 'jd-ask': 'Needs your story', 'jd-gap': 'Job gap',
     'ats-heading': 'ATS heading', 'ats-dates': 'ATS dates',
     'long-bullet': 'Long bullet', 'marker-misaligned': 'Bullet alignment', 'widow-word': 'Lone word', 'sparse-page': 'Length', 'pdf-mismatch': 'PDF',
   })[c] || c;
@@ -584,6 +659,20 @@ async function download(kind) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
+// ---------- Mobile: one pane at a time ----------
+const isPhone = () => window.matchMedia('(max-width: 860px)').matches;
+function showTab(tab) {
+  document.body.dataset.tab = tab;
+  document.querySelectorAll('.mobile-tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  if (tab === 'resume') {
+    $('#resumeDot').hidden = true;
+    requestAnimationFrame(() => !$('#paper').hidden && fitScale());
+  }
+}
+function markResumeUpdated() {
+  if (isPhone() && document.body.dataset.tab !== 'resume') $('#resumeDot').hidden = false;
+}
+
 // ---------- Wiring ----------
 async function boot() {
   buildSetup();
@@ -608,6 +697,8 @@ async function boot() {
     e.preventDefault();
     history(e.shiftKey ? 'redo' : 'undo');
   });
+  document.querySelectorAll('.mobile-tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  showTab('chat');
   $('#jdBtn').addEventListener('click', () => openJdDialog());
   $('#jdCancel').addEventListener('click', () => $('#jdDialog').close());
   $('#jdForm').addEventListener('submit', submitJd);
