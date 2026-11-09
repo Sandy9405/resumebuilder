@@ -48,7 +48,8 @@ test('AI phrasing, first person, placeholders, duplicates, repeated verbs', () =
 test('clean resume has no issues', () => {
   const r = resume(['Built a lead-tracking dashboard for the sales team']);
   r.header = { name: 'A', email: 'a@x.com', phone: '1', tagline: 'Engineer', location: 'Pune', links: ['linkedin.com/in/a'] };
-  assert.deepEqual(lintResume(r, 'Acme 2021 2023 1'), []);
+  // result-missing is an info-level prompt to ask for an outcome, not a defect.
+  assert.deepEqual(lintResume(r, 'Acme 2021 2023 1').filter((i) => i.code !== 'result-missing'), []);
 });
 
 test('ATS: creative headings, missing contact, two-digit years and mixed date formats are flagged', () => {

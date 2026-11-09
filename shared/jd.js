@@ -55,7 +55,11 @@ export const MAX_EVIDENCE_QUESTIONS = 6;
 export function evidenceRequests(resume) {
   const kws = resume.target?.keywords || [];
   const asked = kws.filter((k) => k.status === 'answered' || k.status === 'skipped').length;
-  const open = kws.filter((k) => k.importance === 'must' && k.evidence === 'unknown' && (k.status || 'open') === 'open');
+  // Never ask about something the resume already shows (the old bug: "prompts"
+  // was asked twice while the panel said "On your resume").
+  const text = visibleText(resume);
+  const shown = (k) => [k.term, ...(k.aliases || [])].some((t) => t && termPattern(t).test(text));
+  const open = kws.filter((k) => k.importance === 'must' && k.evidence === 'unknown' && (k.status || 'open') === 'open' && !shown(k));
   return { next: asked < MAX_EVIDENCE_QUESTIONS ? open[0] || null : null, open: open.length, asked, cap: MAX_EVIDENCE_QUESTIONS };
 }
 

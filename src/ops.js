@@ -19,6 +19,8 @@ export function emptyResume(settings = {}) {
       purpose: cleanPurpose(settings.purpose),
       // recent: student / graduated in the last two years; working: under 5 years; experienced: 5+ or switching.
       stage: ['recent', 'working', 'experienced'].includes(settings.stage) ? settings.stage : '',
+      // Has the user confirmed the CV covers their current job? '' | 'still_current' | 'updated'
+      currency: '',
     },
     header: { name: '', tagline: '', email: '', phone: '', location: '', links: [], details: [] },
     profile: { ...emptyProfile(), careerStage: { recent: 'student', working: 'early', experienced: 'experienced' }[settings.stage] || '' },
@@ -269,6 +271,10 @@ export function applyOp(resume, name, input) {
       const must = kws.filter((k) => k.importance === 'must').length;
       return `Target job: ${[resume.target.title, resume.target.company].filter(Boolean).join(' at ') || 'set'} (${kws.length} keywords, ${must} required)`;
     }
+    case 'confirm_current_role': {
+      resume.settings.currency = input.status === 'updated' ? 'updated' : 'still_current';
+      return resume.settings.currency === 'updated' ? 'Current role updated' : 'Latest role confirmed as current';
+    }
     case 'mark_requirement': {
       const k = (resume.target?.keywords || []).find((x) => x.term.toLowerCase() === str(input.term).toLowerCase());
       if (!k) throw new OpError(`No requirement "${input.term}" in the target job. Requirements: ${(resume.target?.keywords || []).map((x) => x.term).join(', ') || '(none)'}`);
@@ -426,4 +432,12 @@ export { snap as snapshot };
 export function applyAnyway(resume) {
   if (!resume.assessment?.fit) throw new OpError('There is no fit assessment to override.');
   resume.assessment.fit.override = true;
+}
+
+/** The role a CV presents as current (dates say Present/Current), else the first one. */
+export function latestRole(resume) {
+  const exp = (resume.sections || []).find((s) => s.kind === 'experience' && !s.hidden);
+  const items = (exp?.items || []).filter((i) => !i.hidden);
+  const it = items.find((i) => /present|current|now|till date|to date|ongoing/i.test(i.dates || '')) || items[0];
+  return it ? { label: [it.heading, it.org].filter(Boolean).join(' at '), dates: it.dates || '' } : null;
 }

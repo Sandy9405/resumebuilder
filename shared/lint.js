@@ -192,6 +192,35 @@ export function lintResume(resume, sourceText) {
     });
   }
 
+  // Accuracy: mixed units in a before/after ("from 23 to 33%"), NPS as a percentage.
+  for (const [path, text, , locked] of resumeTexts(resume)) {
+    const short = text.length > 70 ? `${text.slice(0, 67)}...` : text;
+    const range = text.match(/\bfrom\s+(\d+(?:\.\d+)?)(%?)\s+to\s+(\d+(?:\.\d+)?)(%?)/i);
+    if (range && range[2] !== range[4]) {
+      issues.push({ level: 'warn', code: 'unit-mismatch', message: `"from ${range[1]}${range[2]} to ${range[3]}${range[4]}" mixes units. Are both percentages, or points? Ask the user, then write both the same way: "${short}"`, path });
+    }
+    if (/\bNPS\b[^.;]*\d+\s*%|\d+\s*%[^.;]*\bNPS\b/i.test(text)) {
+      issues.push({ level: 'warn', code: 'unit-mismatch', message: `NPS is a score from -100 to 100, not a percentage. Check with the user and write it as points ("NPS from 23 to 33"): "${short}"`, path });
+    }
+    void locked;
+  }
+
+  // Effectiveness: a story without an outcome is half a bullet.
+  const OUTCOME = /\d|\b(increas|reduc|improv|grew|grow|cut|sav|rais|lift|boost|drove|reach|won|doubl|tripl|halv|led to|so that|result|enabl|help|allow|adopt|used by|replac|remov|prevent|avoid|catch|caught|unblock|chose|decid)/i;
+  let noResult = 0;
+  for (const s of resume.sections || []) {
+    if (s.hidden || !['experience', 'projects', 'leadership'].includes(s.kind)) continue;
+    for (const it of s.items || []) {
+      if (it.hidden) continue;
+      (it.bullets || []).forEach((b, i) => {
+        if (noResult >= 4 || (it.locked || []).includes(b) || OUTCOME.test(b)) return;
+        noResult++;
+        const short = b.length > 70 ? `${b.slice(0, 67)}...` : b;
+        issues.push({ level: 'info', code: 'result-missing', message: `No outcome: what changed because of this? Ask the user for the result (users, conversion, time, quality, a decision it led to): "${short}"`, path: `${s.id}.${it.id}.bullets.${i}` });
+      });
+    }
+  }
+
   issues.push(...headerIssues(resume));
   issues.push(...atsIssues(resume));
 

@@ -218,7 +218,7 @@ function entryBlocks(sec, it, t, opts, firstGap) {
     // One-line achievement / POR: marker + sentence, year on the right.
     const mk = t.entry.marker || t.entry.bulletMarker;
     out.push(
-      blk('st', firstGap, `${mark(mk)}<div class="row"><div class="l t"><span${p('heading')}>${esc(it.heading)}</span>${loc}</div><div class="r">${dates}</div></div>`, { path: itemPath, sec: sec.id }),
+      blk('st', firstGap, `${mark(mk)}<div class="row"><div class="l t"><span${p('heading')}>${rich(it.heading)}</span>${loc}</div><div class="r">${dates}</div></div>`, { path: itemPath, sec: sec.id }),
     );
     return out;
   }
@@ -249,14 +249,14 @@ function entryBlocks(sec, it, t, opts, firstGap) {
   const following = !!(line2 || it.detail || bullets.length || it.note);
   out.push(blk(`eh${edu}`, firstGap, `${mk}<div class="row"><div class="l t">${left}</div><div class="r">${dates}</div></div>`, { keep: following, path: itemPath, sec: sec.id }));
   if (line2) out.push(blk('eh l2', 'line2', `<div class="t">${line2}</div>`, { keep: !!(it.detail || bullets.length), path: itemPath, sec: sec.id }));
-  if (it.detail) out.push(blk(`eh det${edu}`, 'line2', `<div class="t"${p('detail')}>${esc(it.detail)}</div>`, { keep: bullets.length > 0 || !!it.note, path: itemPath, sec: sec.id }));
+  if (it.detail) out.push(blk(`eh det${edu}`, 'line2', `<div class="t"${p('detail')}>${rich(it.detail)}</div>`, { keep: bullets.length > 0 || !!it.note, path: itemPath, sec: sec.id }));
   bullets.forEach((b, i) => {
     // Keep the last two bullets together, and the last bullet with a recognition line.
     const keep = (bullets.length >= 3 && i === bullets.length - 2) || (!!it.note && i === bullets.length - 1);
     out.push(blk('bul', i === 0 && !t.entry.marker ? 'line2' : 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${p(`bullets.${i}`)}>${rich(b)}</div>`, { keep, path: itemPath, sec: sec.id }));
   });
   // Recognition under a role ("Best Performer, New Business 2019"), or an education distinction.
-  if (it.note) out.push(blk('eh note-line', 'line2', `<div class="t note"${p('note')}>${esc(it.note)}</div>`, { path: itemPath, sec: sec.id }));
+  if (it.note) out.push(blk('eh note-line', 'line2', `<div class="t note"${p('note')}>${rich(it.note)}</div>`, { path: itemPath, sec: sec.id }));
   return out;
 }
 
@@ -280,7 +280,7 @@ function educationTable(sec, t, opts) {
   // Coursework or honours listed as bullets under a degree follow the table.
   for (const it of sec.items) {
     (it.bullets || []).forEach((b, i) =>
-      out.push(blk('bul', 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${ed(opts, `${sec.id}.${it.id}.bullets.${i}`)}>${esc(b)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id })),
+      out.push(blk('bul', 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${ed(opts, `${sec.id}.${it.id}.bullets.${i}`)}>${rich(b)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id })),
     );
   }
   return out;
@@ -289,7 +289,7 @@ function educationTable(sec, t, opts) {
 function skillsBlocks(sec, t, opts) {
   return sec.items.map((it, i) => {
     const p = (f) => ed(opts, `${sec.id}.${it.id}.${f}`);
-    const body = it.detail ? `<span${p('detail')}>${esc(it.detail)}</span>` : esc((it.bullets || []).join(', '));
+    const body = it.detail ? `<span${p('detail')}>${rich(it.detail)}</span>` : rich((it.bullets || []).join(', '));
     const cat = it.heading ? `<span class="cat"${p('heading')}>${esc(it.heading)}</span>: ` : '';
     const marker = t.skills === 'bullets' ? mark(t.entry.marker || t.entry.bulletMarker) : '';
     return blk(`st sk${t.skills === 'bullets' ? '' : ' nomk'}`, i === 0 ? 'headingAfter' : 'bullet', `${marker}<div class="t">${cat}${body}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id });
@@ -302,8 +302,9 @@ function summaryBlocks(sec, t, opts) {
     const p = (f) => ed(opts, `${sec.id}.${it.id}.${f}`);
     const gap = i === 0 ? 'headingAfter' : 'entry';
     if (it.detail) out.push(blk('para', gap, `<div class="t"${p('detail')}>${rich(it.detail)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id }));
+    // A profile is prose, so summary "bullets" render as paragraphs.
     (it.bullets || []).forEach((b, j) =>
-      out.push(blk('bul', !it.detail && j === 0 ? gap : 'bullet', `${mark(t.entry.bulletMarker)}<div class="t"${p(`bullets.${j}`)}>${esc(b)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id })),
+      out.push(blk('para', !it.detail && j === 0 ? gap : 'bullet', `<div class="t"${p(`bullets.${j}`)}>${rich(b)}</div>`, { path: `${sec.id}.${it.id}`, sec: sec.id })),
     );
   });
   return out;
@@ -577,6 +578,16 @@ function engine() {
           add('warn', 'table-wrap', `A table cell wraps a short fragment onto its own line: "${short(textOf(td))}". Shorten the text so it fits.`, td);
         }
       });
+    });
+    // Leaked markup ("**Rs 10L+**") reads as unedited AI output.
+    pageEls.forEach((pg) => {
+      const walker = document.createTreeWalker(pg, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const txt = walker.currentNode.textContent;
+        if (/\*\*|__\S|^#{1,3}\s|\[[^\]]+\]\([^)]+\)/.test(txt)) {
+          add('error', 'markup-leak', `Formatting markup is showing as text: "${short(txt.trim())}"`, walker.currentNode.parentElement);
+        }
+      }
     });
     if (bulletLefts.size > 1) add('error', 'indent-inconsistent', `Bullet text starts at ${bulletLefts.size} different indents.`);
     document.querySelectorAll('.blk, .blk *').forEach((el) => {

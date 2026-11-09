@@ -148,7 +148,6 @@ details.changes ul { margin: 4px 0 0; padding-left: 18px; }
   .toolbar button, .toolbar .toggle { order: 2; min-height: 40px; padding: 6px 8px; }
   .toolbar .icon { padding: 6px 9px; }
   .toolbar #redoBtn { display: none; } /* undo stays; redo is rarely needed on a phone */
-  .toolbar #fitBadge { order: 3; flex: 1 1 100%; text-align: center; border: 0; padding: 0; }
   .toolbar .spacer { display: none; }
   .assess, .jd-bar, .hidden-note { padding-left: 12px; padding-right: 12px; }
   .assess { max-height: 34vh; overflow-y: auto; }
@@ -198,3 +197,27 @@ details.changes ul { margin: 4px 0 0; padding-left: 18px; }
 .evidence .st.gap { color: var(--muted); }
 .evidence button { padding: 3px 10px; font-size: 13px; }
 @media (max-width: 860px) { .evidence { padding: 8px 12px; max-height: 30vh; overflow-y: auto; } .evidence button { min-height: 36px; } }
+
+/* Insights: one summary line, expandable; capped so the page stays visible */
+.insights { border-bottom: 1px solid var(--line); background: var(--panel); }
+.insights > summary { cursor: pointer; padding: 8px 16px; font-size: 13.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; list-style: none; }
+.insights > summary::-webkit-details-marker { display: none; }
+.insights > summary::before { content: "▸"; color: var(--muted); }
+.insights.nodetails > summary { cursor: default; }
+.insights.nodetails > summary::before { content: ""; }
+#insightChips { display: contents; }
+.insights[open] > summary::before { content: "▾"; }
+.insights .chip-s { font-size: 12.5px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap; }
+.insights .chip-s.good { color: var(--ok); border-color: currentColor; }
+.insights .chip-s.warn { color: var(--warn); border-color: currentColor; }
+.insights .chip-s.bad { color: var(--bad); border-color: currentColor; }
+.insights-body { max-height: 38vh; overflow-y: auto; border-top: 1px solid var(--line); }
+.insights-body > div { border-bottom: 0; }
+
+/* Quick replies under the agent's question */
+.quick-replies { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.quick-replies button { padding: 5px 12px; font-size: 13.5px; border-radius: 99px; }
+.quick-replies .yes { border-color: var(--accent); color: var(--accent); }
+
+.msg .see-change { margin-top: 6px; padding: 3px 10px; font-size: 12.5px; }
+@media (max-width: 860px) { .insights > summary { padding: 8px 12px; } .quick-replies button { min-height: 40px; } }

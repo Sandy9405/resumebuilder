@@ -206,6 +206,17 @@ When a job description or link names a requirement the CV doesn't show (evals, B
 
   Technical terms and the target job's keywords are exempt from the vocabulary rules. The 60–70% plain / 30–40% terms split is guidance in the prompt; it isn't measured, because it can't be measured reliably.
 
+## Third evaluation: fixes
+
+| Evaluator / user note | Root cause | Fix |
+|---|---|---|
+| Literal `**…**` in the profile | Bold was converted only in job bullets; a profile written as a bullet took an older path | Every displayed text field goes through the same bold conversion (HTML and DOCX). Profiles render as prose. A new `markup-leak` visual check fails if markup ever reaches the page |
+| Wysa still "Present"; current role missing | "Is your CV current?" was only a prompt instruction, and it was skipped | An enforced current-role check: after an upload, the first question is "Is <role> still your current job?", with one-tap answers, recorded via `confirm_current_role` |
+| "NPS from 23 to 33%" | Copied from the input; no unit check | `unit-mismatch`: mixed units in before/after figures, and NPS written as a percentage |
+| Stories added, but not always with a result | Asking for the outcome was a soft rule | The agent asks "What changed because of it?" once per story. `result-missing` (info) lists bullets with no outcome |
+| "prompts" asked twice | The next question ignored what the resume already showed | Requirements already on the resume are never asked about |
+| Can't see the CV while answering | Four panels stacked above the page | A one-line Insights summary (page status, fit, requirements, facts kept) expands on demand. Answer buttons sit under the agent's question. The changed item is scrolled into view and highlighted, and phones get "See it on your resume" |
+
 ## Replies and mobile
 
 - **Replies focus on the user's next step**, not the app's process. The resume updates live, so the agent doesn't narrate its edits. Each reply ends with one clear instruction (what to tell, upload or click), or "Nothing else needed. Download the PDF." The edit log under a reply is collapsed behind "Show changes".
