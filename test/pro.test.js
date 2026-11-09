@@ -14,7 +14,8 @@ after(closeLayout);
 test('career stage routes formats: recent graduates get academic formats, professionals get experience-first', () => {
   assert.deepEqual(FORMATS_BY_STAGE.recent, ['iitb', 'iima', 'hbs']);
   assert.equal(FORMATS_BY_STAGE.experienced[0], 'pro');
-  assert.equal(FORMATS_BY_STAGE.working[0], 'pro');
+  assert.deepEqual(Object.keys(FORMATS_BY_STAGE), ['recent', 'experienced'], 'two stages only');
+  assert.equal(emptyResume({ stage: 'working' }).settings.stage, 'experienced', 'old sessions map to experienced');
   for (const ids of Object.values(FORMATS_BY_STAGE)) for (const id of ids) assert.ok(TEMPLATES[id], id);
   const r = emptyResume({ stage: 'experienced', template: 'pro' });
   assert.equal(r.settings.stage, 'experienced');

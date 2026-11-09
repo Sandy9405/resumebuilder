@@ -68,8 +68,7 @@ Setup asks **"Where are you in your career?"** and only shows the formats that s
 | Answer | Formats offered |
 |---|---|
 | Student or recent graduate (last two years) | IITB, IIMA, HBS |
-| Working, under 5 years | Experienced Professional (recommended), HBS |
-| 5+ years, or switching jobs | Experienced Professional (recommended), HBS |
+| Experienced (working, or switching jobs) | Experienced Professional (recommended), HBS |
 
 **Experienced Professional** comes from the product owner's own CV. It's A4, in Calibri (bundled as Carlito, which has identical character widths), with a navy name and section rules, grey subtitle and dates. The layout:
 
@@ -222,6 +221,13 @@ When a job description or link names a requirement the CV doesn't show (evals, B
 
 - **Replies focus on the user's next step**, not the app's process. The resume updates live, so the agent doesn't narrate its edits. Each reply ends with one clear instruction (what to tell, upload or click), or "Nothing else needed. Download the PDF." The edit log under a reply is collapsed behind "Show changes".
 - **Phones** (≤ 860 px wide) get one pane at a time, with Chat and Resume tabs. A dot appears on Resume when it changes. The composer stays pinned at the bottom, controls are thumb-sized, the toolbar fits on two rows, and the text field is 16 px so iOS doesn't zoom. The hidden preview is moved off-screen rather than set to `display: none`, so the page engine can still measure text while you chat.
+
+## Interface
+
+- **Setup is four short steps**, one question per screen with a progress bar: career stage (Recent graduate or Experienced), how to start (Upload, Talk it through, or Both), layout (thumbnails, only the ones that suit the stage), then length and purpose. Steps 1 to 3 move on as soon as you pick; Back is always there.
+- **The composer changes with the conversation.** When the agent asks a question, voice becomes the main way to answer: a large mic, labelled **Voice AI** (shown only when Sarvam is transcribing), with "or type instead" underneath. While recording the mic turns red with a live level meter and a countdown; after you tap stop it shows that your words are being turned into text. Otherwise the composer is a compact text field with a small mic.
+- **Toolbar:** layout and page count, undo/redo, Edit, Checks (one number: things worth fixing) and one Download button with PDF and Word options. Checks and Download stay disabled until a first draft exists.
+- Light and dark mode follow the system setting.
 
 ## Voice: Sarvam speech-to-text
 

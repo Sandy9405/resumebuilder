@@ -18,12 +18,14 @@ export function emptyResume(settings = {}) {
       buildMode: settings.buildMode || 'talk',
       purpose: cleanPurpose(settings.purpose),
       // recent: student / graduated in the last two years; working: under 5 years; experienced: 5+ or switching.
-      stage: ['recent', 'working', 'experienced'].includes(settings.stage) ? settings.stage : '',
+      // Two stages: 'recent' (student / graduated in the last two years) or 'experienced'.
+      // Older sessions stored 'working'; it now means experienced.
+      stage: settings.stage === 'recent' ? 'recent' : ['experienced', 'working'].includes(settings.stage) ? 'experienced' : '',
       // Has the user confirmed the CV covers their current job? '' | 'still_current' | 'updated'
       currency: '',
     },
     header: { name: '', tagline: '', email: '', phone: '', location: '', links: [], details: [] },
-    profile: { ...emptyProfile(), careerStage: { recent: 'student', working: 'early', experienced: 'experienced' }[settings.stage] || '' },
+    profile: { ...emptyProfile(), careerStage: settings.stage === 'recent' ? 'student' : ['experienced', 'working'].includes(settings.stage) ? 'experienced' : '' },
     target: null,
     assessment: { cv: null, fit: null },
     sections: [],
