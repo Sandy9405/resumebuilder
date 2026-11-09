@@ -47,7 +47,7 @@ export const TEMPLATES = {
     font: { family: 'TeX Gyre Pagella', fallback: '"Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", serif', docx: 'Palatino Linotype' },
     headingFont: null,
     // Measured: body word height 9.9pt, baseline pitch 12.0pt => 10pt / 1.2.
-    size: { base: 10, min: 9.5, name: 14.4, heading: 9, contact: 9.5, table: 10 },
+    size: { base: 10, min: 9.5, max: 11, name: 14.4, heading: 9, contact: 9.5, table: 10 },
     lineHeight: 1.2,
     header: { layout: 'split', nameCase: 'normal', nameLetterSpacingPt: 0, rule: 'none' },
     // Grey full-width band, small bold caps (measured 8.7pt cap height ~ 9pt bold).
@@ -91,7 +91,7 @@ export const TEMPLATES = {
     headingFont: null,
     // Measured: body word height 11.9pt => Garamond 11pt. 10.5pt keeps the same
     // density with left-aligned text (the sample's justification hid extra width).
-    size: { base: 10.5, min: 10, name: 18, heading: 11.5, contact: 10, table: 10 },
+    size: { base: 10.5, min: 10, max: 11.5, name: 18, heading: 11.5, contact: 10, table: 10 },
     lineHeight: 1.18,
     header: { layout: 'right-name', nameCase: 'small-caps', nameLetterSpacingPt: 0.3, rule: 'none' },
     heading: { style: 'band', fill: '#a6a6a6', align: 'left', case: 'upper', letterSpacingPt: 0.2, padPt: [0.5, 6] },
@@ -133,11 +133,13 @@ export const TEMPLATES = {
     headingFont: null,
     // Measured: body 10pt, name 16pt with 2.5pt letter spacing, section titles 14pt small caps.
     // Body set at 10.5pt: EB Garamond at 10pt reads small on screen and in print.
-    size: { base: 10.5, min: 10, name: 16, heading: 12.5, contact: 10, table: 10.5 },
+    size: { base: 10.5, min: 10, max: 11.5, name: 16, heading: 12.5, contact: 10, table: 10.5 },
     lineHeight: 1.18,
-    header: { layout: 'left-rule', nameCase: 'small-caps', nameLetterSpacingPt: 2.5, rule: 'solid' },
+    // DEPARTS: reference tracks the name at 2.5pt and headings at 2pt. Above ~0.05em,
+    // PDF text extraction (and so ATS parsing) splits words into letters: "P r i ya".
+    header: { layout: 'left-rule', nameCase: 'small-caps', nameLetterSpacingPt: 0.8, rule: 'solid' },
     // Centered small caps between dotted rules (measured w:pBdr top/bottom dotted sz=4).
-    heading: { style: 'dotted-rules', fill: null, align: 'center', case: 'small-caps', letterSpacingPt: 2, padPt: [1, 0] },
+    heading: { style: 'dotted-rules', fill: null, align: 'center', case: 'small-caps', letterSpacingPt: 0.6, padPt: [1, 0] },
     educationTable: null, // education uses the standard entry layout
     entry: {
       // "ALLIED HOSPITALS, Leominster, DE ............ 1994 - Present" (org bold caps)
@@ -172,6 +174,23 @@ export const DENSITY_LEVELS = [
 ];
 // Overflow larger than this share of one page is a content problem, not a spacing one.
 export const MAX_AUTO_TIGHTEN = 0.06;
+
+// A one-page resume should fill its page. When content runs short, the engine
+// enlarges spacing and BODY text only (never the name or section headings),
+// up to the template's size.max. It never adds content: the agent is told to
+// ask for more material when the page is under LOW_CONTENT at normal size.
+export const EXPAND_LEVELS = [
+  { spacing: 1, font: 0, leading: 1 },
+  { spacing: 1.15, font: 0, leading: 1 },
+  { spacing: 1.3, font: 0, leading: 1 },
+  { spacing: 1.3, font: 0.25, leading: 1 },
+  { spacing: 1.45, font: 0.5, leading: 1.04 },
+  { spacing: 1.6, font: 0.75, leading: 1.08 },
+  { spacing: 1.75, font: 1, leading: 1.12 },
+];
+export const FILL_TARGET = 0.9; // stop enlarging once the page is this full
+export const FILL_CEILING = 0.985; // never enlarge past this (keeps a safety margin)
+export const LOW_CONTENT = 0.75; // below this at normal size, ask the user for more material
 
 export const MM_TO_PX = 96 / 25.4;
 export const PT_TO_PX = 96 / 72;

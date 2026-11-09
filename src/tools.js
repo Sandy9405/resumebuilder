@@ -22,8 +22,14 @@ const ITEM = {
       items: S,
       description: 'Accurate bullets kept in the user\'s data but not shown at the current page limit. Move bullets here instead of deleting them when cutting for length; bring them back for a longer version.',
     },
+    user_wording: {
+      type: 'array',
+      items: S,
+      description:
+        'Bullets the user dictated word for word or asked to keep exactly as they said it ("add it like this"). Copy each one unchanged into bullets as well. When updating an item, keep this list as it is in <resume_state> (field "locked"); change an entry only when the user gives new wording or asks you to rewrite it.',
+    },
   },
-  required: ['heading', 'org', 'location', 'dates', 'detail', 'note', 'bullets', 'reserve_bullets'],
+  required: ['heading', 'org', 'location', 'dates', 'detail', 'note', 'bullets', 'reserve_bullets', 'user_wording'],
   additionalProperties: false,
 };
 
@@ -94,8 +100,16 @@ export const TOOLS = [
   }),
   tool(
     'update_item',
-    'Replace one entry. Send the full item, copying unchanged fields and bullets exactly from <resume_state>.',
-    { section_id: S, item_id: S, item: ITEM },
+    'Replace one entry. Send the full item, copying unchanged fields, bullets and user_wording exactly from <resume_state>.',
+    {
+      section_id: S,
+      item_id: S,
+      item: ITEM,
+      user_requested_change: {
+        type: 'boolean',
+        description: 'true only when the user explicitly asked, in this conversation, to reword or remove one of their own dictated bullets. Otherwise false.',
+      },
+    },
   ),
   tool('remove_item', 'Delete one entry permanently. Only when the user asks. To cut for length, use set_visibility instead.', { section_id: S, item_id: S }),
   tool(
@@ -120,6 +134,68 @@ export const TOOLS = [
       target_role: { type: 'string', description: 'Only if the user stated one. "" otherwise.' },
     },
   ),
+  tool(
+    'set_target_job',
+    'Record the target job after reading a job description: title, company, seniority, and its important keywords (skills, tools, domain terms, qualifications). For each keyword say whether the user\'s own material shows they have it. The app then checks which keywords the resume shows. Call again if your reading changes, e.g. after the user answers a gap question.',
+    {
+      title: S,
+      company: S,
+      seniority: { type: 'string', description: 'e.g. "entry", "2-4 years", "senior", "lead". "" if unclear.' },
+      keywords: {
+        type: 'array',
+        description: 'The 8-25 terms that matter most, in the JD\'s own wording.',
+        items: {
+          type: 'object',
+          properties: {
+            term: { type: 'string', description: 'As written in the JD, e.g. "SQL", "stakeholder management", "A/B testing"' },
+            aliases: { type: 'array', items: S, description: 'Other spellings that count as the same thing, e.g. ["Postgres"] for "PostgreSQL". [] if none.' },
+            importance: { type: 'string', enum: ['must', 'nice'] },
+            evidence: {
+              type: 'string',
+              enum: ['yes', 'no', 'unknown'],
+              description: 'yes: the user\'s CV or answers show it. no: clearly absent. unknown: not mentioned either way; ask before using it.',
+            },
+          },
+          required: ['term', 'aliases', 'importance', 'evidence'],
+          additionalProperties: false,
+        },
+      },
+    },
+  ),
+  tool(
+    'set_purpose',
+    'Record what this resume is for once the user tells you: a specific job (they have or will give a job description), a type of role (name it), or general use.',
+    { type: { type: 'string', enum: ['jd', 'role', 'general'] }, role: { type: 'string', description: 'The role or job family for type "role", e.g. "Product Manager". "" otherwise.' } },
+  ),
+  tool(
+    'assess_cv',
+    'Your honest verdict on an uploaded CV, given before or with the first draft: can you materially improve it, or is it already strong? Shown to the user.',
+    {
+      verdict: { type: 'string', enum: ['improve', 'already_strong'] },
+      summary: { type: 'string', description: 'One or two plain sentences for the user.' },
+      improvements: {
+        type: 'array',
+        items: S,
+        description: 'The specific, material improvements you will make (or the only light polish, if already strong). Short phrases.',
+      },
+    },
+  ),
+  tool(
+    'assess_fit',
+    'Your honest verdict on how well the user\'s real experience fits the target (a job description, or a role/job family they named). Shown to the user. Call after the first read, and again after the user answers your decisive question.',
+    {
+      target: { type: 'string', description: 'The role being assessed, e.g. "Product Manager at Swiggy" or "Data Scientist (general)".' },
+      level: { type: 'string', enum: ['strong', 'good', 'weak', 'very_weak'] },
+      summary: { type: 'string', description: 'Two plain sentences: why, based on their evidence.' },
+      gaps: { type: 'array', items: S, description: 'The requirements their material does not show, most important first.' },
+      decisive_question: {
+        type: 'string',
+        description: 'For weak or very weak fits: the one question whose answer could change the verdict, e.g. "Have you shipped anything to production in Python?". "" once asked and answered, or if no answer could change it.',
+      },
+      better_fit_roles: { type: 'array', items: S, description: 'For weak fits: up to three roles their real experience fits better. [] otherwise.' },
+    },
+  ),
+  tool('clear_target_job', 'Stop tailoring to a specific job (the user removed the job description).', {}),
   tool('set_format', 'Switch template and/or page count, only when the user asks. Send both values.', {
     template: { type: 'string', enum: ['iitb', 'iima', 'hbs'] },
     pages: { type: 'integer', enum: [1, 2] },

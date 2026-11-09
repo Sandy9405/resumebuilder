@@ -112,6 +112,59 @@ Alignment uses real layout components throughout. In the HTML, a two-column grid
   - first-person pronouns;
   - repeated verbs, duplicates and placeholders.
 
+## Tailoring to a job description
+
+The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
+
+- **Links:** the server fetches the page, preferring the schema.org `JobPosting` data most job boards embed. Pages that build the job description with JavaScript are rendered in headless Chromium. LinkedIn usually needs a login, so the app asks for pasted text or a PDF instead of failing silently.
+- **SSRF protection:** every connection, including each redirect, is checked at connect time. Private, loopback, link-local, metadata and IPv4-mapped IPv6 addresses are refused, as are non-standard ports. IP-literal hosts are checked separately, because Node skips the DNS lookup for them.
+- **Honest tailoring:** Claude records the job's keywords with `set_target_job`, marking each one `yes` (the user has it), `no` or `unknown`. The app then counts which keywords the resume actually shows.
+  - Missing keywords the user has are flagged to add.
+  - Unknown ones become questions.
+  - Gaps stay gaps.
+- **The JD is never treated as the user's evidence.** A "5+ years" in the job description does not verify a "5 years" claim on the resume.
+- **No embellishment.** Claude declines requests to invent skills, inflate titles or metrics, or hide keywords in white text, and offers the honest alternatives instead.
+
+## ATS readiness
+
+- PDFs are text-based. Text extracts in reading order: name intact, each heading before its own content, dates on the same line as their entry. A test checks this for every format.
+- Two fixes came from those tests:
+  - Name and heading letter-spacing is kept small, because wide tracking made extractors read "P r i ya".
+  - Every block is painted in a single pass, so headings are no longer written to the PDF before the body text.
+- Content checks flag non-standard section headings, missing email or phone, two-digit years and mixed date formats.
+
+## Honest verdicts
+
+- **Purpose.** Setup asks what the resume is for: a specific job (opens the job description dialog), a type of role (named), or general use. If it's still unknown, the agent asks once and records the answer with `set_purpose`. A general resume gets no fit assessment.
+- **"Your CV is already strong."** For an uploaded CV, Claude calls `assess_cv` with the verdict `improve` or `already_strong`. When it's already strong, Claude says so, moves it into the format, and makes only real fixes; it never rewords good bullets for the sake of change. Next to the verdict, the app shows **measured** before/after counts from the uploaded text and the built resume (generic phrases, passive voice, overlong bullets, first person), so "improved" is checked rather than claimed.
+- **Fit.** With a target (a job description or a named role), Claude calls `assess_fit`: `strong`, `good`, `weak` or `very_weak`, with the gaps listed.
+  - For weak fits, it first asks the one **decisive question** that could change the verdict.
+  - If the answer shows real evidence, it re-assesses. If not, it says plainly that this is a weak fit and suggests better-fit roles.
+  - The panel shows an **Apply anyway** button. Pressing it records the choice (it survives re-assessment of the same target) and tailors honestly: transferable evidence first, gaps kept as gaps, plus advice on which gaps to cover in a cover letter or interview.
+  - The server notes, but doesn't override, a "strong" or "good" verdict when most required keywords are marked as missing.
+
+## Content rules
+
+- **Complete header.** Every resume has a name, a sub-header (a one-line professional title), email, phone, city, and every profile link the user has (LinkedIn, portfolio, GitHub, personal site). Links are real hyperlinks in the PDF and DOCX, displayed as the address itself.
+  - Links hidden behind words like "LinkedIn" in uploaded PDFs or DOCX files are recovered from the file's link annotations, so they aren't lost.
+  - Missing items are flagged (`header-incomplete`, `links-missing`), and the agent asks for them.
+- **One page means a full page.** If content falls short, the agent asks for more real material first: projects, internships, coursework, competitions, responsibilities, certifications, then interests.
+  - As a last resort, the layout engine enlarges spacing, line spacing (at most 12%) and **body text only** (never the name or headings), up to each template's `size.max`.
+  - Anything still under 75% full at normal size is flagged `underfilled`. Typography typically adds 15–20 percentage points of fill; it can't turn half a page into a full one.
+  - Two-page resumes are never stretched.
+- **The user's wording wins.** Bullets the user dictates, or types into the preview, are stored in `locked` and must stay word for word. An edit that changes them is refused unless the model sets `user_requested_change`, which it may only do when the user asked. Locked bullets are exempt from style checks.
+- **ASD-STE100-style writing:**
+  - one idea per bullet, at most 25 words;
+  - active voice, simple single-meaning verbs, plain punctuation;
+  - the ", …ing" result tail capped at about one bullet in three;
+  - extra AI-slop terms flagged.
+
+  Technical terms and the target job's keywords are exempt from the vocabulary rules. The 60–70% plain / 30–40% terms split is guidance in the prompt; it isn't measured, because it can't be measured reliably.
+
+## Voice limits
+
+Each recording is limited to 2 minutes (a countdown shows), and several recordings in a row are fine. Recording stops after 15 seconds without speech; if nothing was said, nothing is sent. If the browser ends recognition early mid-sentence, it restarts automatically within those limits.
+
 ## Code map
 
 ```
@@ -123,6 +176,9 @@ src/tools.js          strict-schema edit tools
 src/ops.js            applies edits; profile; visibility; undo/redo
 src/agent.js          one conversation turn: Claude + tool loop + QA feedback
 src/layout.js         headless Chromium: layout, QA and PDF
+src/jd.js             job description fetch (SSRF-safe), HTML/JSON-LD extraction
+src/extract.js        PDF/DOCX/TXT text extraction
+shared/jd.js          job keyword coverage
 src/docx.js           DOCX export
 src/server.js         Express API
 public/               browser app

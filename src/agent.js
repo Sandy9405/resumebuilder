@@ -8,6 +8,7 @@ import { SYSTEM_PROMPT } from './prompt.js';
 import { TOOLS } from './tools.js';
 import { applyOp, OpError, snapshot, pushHistory } from './ops.js';
 import { lintResume } from '../shared/lint.js';
+import { jdCoverage, jdIssues } from '../shared/jd.js';
 import { measureLayout, describeFit } from './layout.js';
 import { getTemplate } from '../shared/templates.js';
 
@@ -37,20 +38,45 @@ function stateBlock(session) {
     `Build mode: ${r.settings.buildMode}. Format: ${t.label} (id ${t.id}), ${t.page.name} paper. Page limit: ${r.settings.pages}.`,
     `Layout: ${session.layout ? describeFit(session.layout) : 'not measured yet.'}`,
     hidden.length ? `Hidden for length (kept in data): ${hidden.join('; ')}.` : 'Hidden for length: nothing.',
+    `Purpose: ${purposeLine(r.settings.purpose)}`,
+    `Assessment: ${JSON.stringify(r.assessment || {})}`,
     `Profile: ${JSON.stringify(r.profile)}`,
+    `Target job: ${r.target ? `${JSON.stringify({ title: r.target.title, company: r.target.company, seniority: r.target.seniority })}. ${coverageLine(r)}` : session.jd ? 'a job description was provided but set_target_job has not been called yet.' : 'none (general resume).'}`,
     JSON.stringify({ header: r.header, sections: r.sections }),
     '</resume_state>',
   ].join('\n');
 }
 
+function purposeLine(p) {
+  if (p?.type === 'jd') return 'a specific job; the user has or will give a job description.';
+  if (p?.type === 'role') return `${p.role} roles (no job description). Assess fit against what this role typically requires.`;
+  if (p?.type === 'general') return 'general use; no single target. Present their strongest, most transferable experience.';
+  return 'not stated yet. Ask early, in one question: a specific job, a type of role, or general use.';
+}
+
+function coverageLine(r) {
+  const c = jdCoverage(r);
+  if (!c) return 'No keywords recorded.';
+  const have = c.missing.filter((m) => m.evidence === 'yes').map((m) => m.term);
+  const ask = c.missing.filter((m) => m.evidence === 'unknown').map((m) => m.term);
+  return [
+    `Keywords shown on the resume: required ${c.must.matched}/${c.must.total}, nice-to-have ${c.nice.matched}/${c.nice.total}.`,
+    have.length ? `The user has these but the resume doesn't show them: ${have.join(', ')}.` : '',
+    ask.length ? `Unknown, ask before using: ${ask.join(', ')}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 /** Content checks + visual QA, condensed for the model. */
 export function qaSummary(session) {
-  const content = lintResume(session.resume, session.sourceText);
+  const content = [...lintResume(session.resume, session.sourceText), ...jdIssues(session.resume).filter((i) => i.code === 'jd-missing')];
   const visual = session.layout?.issues || [];
   const all = [...visual.filter((i) => i.level === 'error'), ...content, ...visual.filter((i) => i.level !== 'error')];
   const lines = all.slice(0, 15).map((i) => `- [${i.code}] ${i.message}${i.path ? ` (at ${i.path})` : ''}`);
   if (all.length > 15) lines.push(`- ...and ${all.length - 15} more`);
-  return `Layout: ${describeFit(session.layout)}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
+  const job = session.resume.target ? `\nJob match: ${coverageLine(session.resume)}` : '';
+  return `Layout: ${describeFit(session.layout)}${job}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
 }
 
 const textOf = (content) =>

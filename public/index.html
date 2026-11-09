@@ -34,6 +34,16 @@
       </div>
     </fieldset>
 
+    <fieldset>
+      <legend>4. What is this resume for?</legend>
+      <div class="cards" data-name="purpose">
+        <label class="card"><input type="radio" name="purpose" value="jd"><b>A specific job</b><span>I have the job description or a link. I'll tailor to it and tell you honestly how well you fit.</span></label>
+        <label class="card"><input type="radio" name="purpose" value="role"><b>A type of role</b><span>e.g. Product Manager, Data Analyst.</span>
+          <input type="text" id="purposeRole" class="role-input" placeholder="Which role?" maxlength="120"></label>
+        <label class="card"><input type="radio" name="purpose" value="general" checked><b>General use</b><span>A strong all-round resume, no single target.</span></label>
+      </div>
+    </fieldset>
+
     <button id="startBtn" class="primary big">Start</button>
   </main>
 
@@ -56,7 +66,9 @@
       <div class="quick">
         <button type="button" id="skipBtn" class="ghost small" title="Skip the current question">Skip question</button>
         <button type="button" id="finishBtn" class="ghost small" title="Stop the interview and finalise">I'm done, finish it</button>
+        <button type="button" id="jdBtn" class="ghost small" title="Tailor the resume to a job description">Target a job</button>
       </div>
+      <div id="voiceStatus" class="voice-status" hidden></div>
       <form id="composer" class="composer">
         <button type="button" id="micBtn" class="mic" title="Speak" aria-pressed="false">🎤</button>
         <textarea id="input" rows="2" placeholder="Type, or press the mic and talk…"></textarea>
@@ -82,6 +94,11 @@
         <button id="docxBtn" class="ghost">DOCX</button>
       </div>
       <div id="checksPanel" class="checks" hidden></div>
+      <div id="assessBar" class="assess" hidden></div>
+      <div id="jdBar" class="jd-bar" hidden>
+        <span id="jdText"></span>
+        <button type="button" id="jdRemove" class="ghost small">Remove job</button>
+      </div>
       <div id="hiddenNote" class="hidden-note" hidden></div>
       <div class="stage" id="stage">
         <div id="empty" class="empty">Your resume will appear here as soon as there's enough for a first draft.</div>
@@ -92,6 +109,28 @@
       <p class="spec-note">Formats are the product's design templates, not official institutional templates.</p>
     </section>
   </div>
+
+  <dialog id="jdDialog" class="jd-dialog">
+    <form id="jdForm" method="dialog">
+      <h2>Tailor to a job</h2>
+      <p class="hint">Give me the job description. I'll reorder and reword your real experience to match, and ask about anything the job wants that I can't find. I won't add skills or results you don't have.</p>
+      <label>Job link
+        <input id="jdUrl" type="url" placeholder="https://careers.example.com/jobs/123" autocomplete="off">
+      </label>
+      <p class="hint">Company career pages and most job boards work. LinkedIn usually needs a login, so paste the text or upload a PDF instead.</p>
+      <label>Or upload the JD (PDF, DOCX, TXT)
+        <input id="jdFile" type="file" accept=".pdf,.docx,.txt,application/pdf">
+      </label>
+      <label>Or paste the text
+        <textarea id="jdTextIn" rows="6" placeholder="Paste the full job description"></textarea>
+      </label>
+      <p id="jdError" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="jdCancel" class="ghost">Cancel</button>
+        <button type="submit" id="jdSubmit" class="primary">Tailor my resume</button>
+      </div>
+    </form>
+  </dialog>
 
   <script type="module" src="/app.js"></script>
 </body>

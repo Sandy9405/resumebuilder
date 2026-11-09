@@ -3,12 +3,13 @@ import multer from 'multer';
 import path from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import mammoth from 'mammoth';
-import { extractText, getDocumentProxy } from 'unpdf';
 
-import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo } from './ops.js';
+import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo, applyAnyway } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
-import { lintResume } from '../shared/lint.js';
+import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
+import { jdIssues, jdCoverage } from '../shared/jd.js';
+import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
+import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
 import { renderDocx } from './docx.js';
 import { renderResume } from '../shared/render.js';
@@ -30,8 +31,12 @@ function view(s) {
     id: s.id,
     resume: s.resume,
     layout: s.layout,
-    // Content checks only; visual QA lives in layout (the browser recomputes it live).
-    issues: lintResume(s.resume, s.sourceText),
+    // Content, ATS and job-match checks; visual QA lives in layout (the browser recomputes it live).
+    issues: [...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
+    jd: s.jd ? { source: s.jd.source, title: s.jd.title, company: s.jd.company, chars: s.jd.text.length } : null,
+    coverage: jdCoverage(s.resume),
+    // Measured before/after quality, when the user uploaded a CV.
+    quality: s.baseline && s.resume.sections.length ? { before: s.baseline, after: resumeCounts(s.resume) } : null,
     chat: s.chat,
     canUndo: s.undo.length > 0,
     canRedo: s.redo.length > 0,
@@ -108,13 +113,13 @@ export function createApp({ client } = {}) {
   }
 
   app.post('/api/sessions', (req, res) => {
-    const { template, pages, buildMode } = req.body || {};
+    const { template, pages, buildMode, purpose } = req.body || {};
     const mode = ['upload', 'talk', 'both'].includes(buildMode) ? buildMode : 'talk';
     const opener = OPENERS[mode];
     const s = {
       id: randomUUID(),
       opener,
-      resume: emptyResume({ template, pages: Number(pages), buildMode: mode }),
+      resume: emptyResume({ template, pages: Number(pages), buildMode: mode, purpose }),
       messages: [],
       chat: [{ role: 'assistant', text: opener }],
       sourceText: '',
@@ -122,6 +127,8 @@ export function createApp({ client } = {}) {
       undo: [],
       redo: [],
       pendingNotes: [],
+      jd: null,
+      baseline: null,
       busy: false,
       touched: Date.now(),
     };
@@ -145,39 +152,82 @@ export function createApp({ client } = {}) {
     if (!f) return res.status(400).json({ error: 'No file received.' });
     const name = f.originalname || 'resume';
     const note = String(req.body?.note || '').trim();
-    let doc;
-    let text = '';
+    let extracted;
     try {
-      if (f.mimetype === 'application/pdf' || /\.pdf$/i.test(name)) {
-        const pdf = await getDocumentProxy(new Uint8Array(f.buffer));
-        text = (await extractText(pdf, { mergePages: true })).text || '';
-        // Send the PDF itself: the model reads layout and scanned pages better than extracted text.
-        doc = { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } };
-      } else if (/\.docx$/i.test(name)) {
-        text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
-        doc = { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
-      } else if (/\.(txt|md)$/i.test(name) || f.mimetype?.startsWith('text/')) {
-        text = f.buffer.toString('utf8');
-        doc = { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
-      } else {
-        return res.status(400).json({ error: 'Please upload a PDF, DOCX or TXT file.' });
-      }
+      extracted = await extractDocument(f.buffer, name, f.mimetype);
     } catch (err) {
-      console.error(err);
-      return res.status(400).json({ error: 'Could not read that file. Is it a valid PDF or DOCX?' });
+      if (err instanceof ExtractError) return res.status(400).json({ error: err.message });
+      throw err;
     }
-    if (!text.trim() && doc.source.type === 'text') {
-      return res.status(400).json({ error: 'That file has no readable text.' });
-    }
-    req.s.sourceText += `\n${text}\n${note}`;
+    const { kind, text, links } = extracted;
+    if (!text.trim() && kind !== 'pdf') return res.status(400).json({ error: 'That file has no readable text.' });
+    // Send a PDF itself: the model reads layout and scanned pages better than extracted text.
+    const doc =
+      kind === 'pdf'
+        ? { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } }
+        : { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
+    req.s.sourceText += `\n${text}\n${links.join('\n')}\n${note}`;
+    if (text.trim()) req.s.baseline = cvTextCounts(text);
     const lowText = text.replace(/\s/g, '').length < 200;
     const prompt =
       `I've uploaded my current CV (${name}).` +
-      (lowText && doc.source.type === 'base64'
-        ? ' (Note from the app: almost no text could be extracted from this PDF, so it may be scanned. Read it carefully and ask about anything unclear.)'
+      (links.length ? `\n(App note: links found in the file, including any hidden behind words like "LinkedIn": ${links.join(', ')}. Put the profile and portfolio links in the header.)` : '') +
+      (lowText && kind === 'pdf'
+        ? ' (App note: almost no text could be extracted from this PDF, so it may be scanned. Read it carefully and ask about anything unclear.)'
         : '') +
       (note ? `\n\n${note}` : '');
     await turn(req, res, [doc, { type: 'text', text: prompt }], `Uploaded ${name}${note ? `: ${note}` : ''}`);
+  });
+
+  // Target a job description: a link, an uploaded file, or pasted text.
+  // The JD is NOT added to sourceText: its numbers and skills are the employer's,
+  // not evidence of what the user did.
+  app.post('/api/sessions/:id/jd', getSession, upload.single('file'), async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const { url, text } = req.body || {};
+    let job;
+    try {
+      if (req.file) job = await jobFromFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+      else if (url) job = await jobFromUrl(url);
+      else job = jobFromText(text);
+    } catch (err) {
+      if (err instanceof JdError || err instanceof ExtractError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    req.s.jd = job;
+    const label = [job.title, job.company].filter(Boolean).join(' at ') || job.source;
+    const doc = { type: 'document', title: `Job description: ${label}`, source: { type: 'text', media_type: 'text/plain', data: job.text } };
+    const ask = `I want to apply for this job (${job.source}). Tailor my resume to it: record the target job and its keywords, show my relevant experience first in the job's language where it is true, and ask me about requirements you can't find evidence for. Do not add anything I haven't told you.`;
+    await turn(req, res, [doc, { type: 'text', text: ask }], `Target job: ${label}`);
+  });
+
+  // The user chose to apply despite a weak fit: tailor honestly anyway.
+  app.post('/api/sessions/:id/apply-anyway', getSession, async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const before = snapshot(req.s.resume);
+    try {
+      applyAnyway(req.s.resume);
+    } catch (err) {
+      if (err instanceof OpError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    pushHistory(req.s, before);
+    const target = req.s.resume.assessment.fit.target || 'this role';
+    await turn(
+      req,
+      res,
+      [{ type: 'text', text: `(App note: the user pressed "Apply anyway" for ${target}.) I want to apply anyway. Tailor my resume for it as well as you honestly can, and tell me which gaps to address in my cover letter or interview.` }],
+      `Apply anyway: ${target}`,
+    );
+  });
+
+  app.delete('/api/sessions/:id/jd', getSession, async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const before = snapshot(req.s.resume);
+    req.s.jd = null;
+    applyOp(req.s.resume, 'clear_target_job', {});
+    if (pushHistory(req.s, before)) req.s.pendingNotes.push('The user removed the job description. Stop tailoring to it; keep the resume content as it is unless asked.');
+    res.json(view(req.s));
   });
 
   // Direct edits typed into the preview. User-typed text counts as source material.

@@ -37,13 +37,21 @@ function buildSetup() {
 
 async function start() {
   const val = (n) => document.querySelector(`input[name="${n}"]:checked`).value;
-  const body = { buildMode: val('buildMode'), template: val('template'), pages: Number(val('pages')) };
+  const purposeType = val('purpose');
+  const role = $('#purposeRole').value.trim();
+  if (purposeType === 'role' && !role) {
+    $('#purposeRole').focus();
+    $('#purposeRole').placeholder = 'Type the role first';
+    return;
+  }
+  const body = { buildMode: val('buildMode'), template: val('template'), pages: Number(val('pages')), purpose: { type: purposeType, role } };
   S = await api('/api/sessions', { method: 'POST', body });
   store.set('sessionId', S.id);
   $('#speakToggle').checked = body.buildMode !== 'upload';
   showWorkspace();
   render();
   if (body.buildMode === 'talk') speak(S.chat[0]?.text);
+  if (purposeType === 'jd') openJdDialog();
 }
 
 function showWorkspace() {
@@ -120,9 +128,21 @@ async function uploadFile(file) {
 }
 
 // ---------- Voice ----------
+// Each recording is capped at 2 minutes (multiple recordings are fine) and
+// stops after 15 seconds without speech. Browsers sometimes end recognition on
+// their own mid-sentence; within those limits it is restarted transparently.
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+// window.__voiceLimits lets automated tests shorten the timers.
+const MAX_TURN_MS = window.__voiceLimits?.max || 120000;
+const SILENCE_MS = window.__voiceLimits?.silence || 15000;
 let rec = null;
 let heard = '';
+let baseText = '';
+let startedAt = 0;
+let lastSpeechAt = 0;
+let ticker = null;
+let stopReason = '';
+let stopping = false;
 
 function setupVoice() {
   if (!Recognition) {
@@ -130,42 +150,107 @@ function setupVoice() {
     $('#micBtn').title = 'Voice input needs Chrome, Edge or Safari. You can type instead.';
     return;
   }
-  $('#micBtn').addEventListener('click', () => (rec ? stopListening() : startListening()));
+  $('#micBtn').addEventListener('click', () => (rec ? stopListening('user') : startListening()));
+}
+
+const fmt = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+function voiceStatus(text, live = false) {
+  const el = $('#voiceStatus');
+  el.hidden = !text;
+  el.textContent = text || '';
+  el.classList.toggle('live', live);
 }
 
 function startListening() {
-  speechSynthesis?.cancel();
+  if (busy) return;
+  window.speechSynthesis?.cancel();
   heard = '';
+  baseText = $('#input').value ? `${$('#input').value} ` : '';
+  stopReason = '';
+  stopping = false;
+  startedAt = lastSpeechAt = Date.now();
+  $('#micBtn').classList.add('live');
+  $('#micBtn').setAttribute('aria-pressed', 'true');
+  ticker = setInterval(tick, 250);
+  tick();
+  startRecognizer();
+}
+
+function startRecognizer() {
   rec = new Recognition();
   rec.lang = navigator.language?.startsWith('en') ? navigator.language : 'en-IN';
   rec.continuous = true;
   rec.interimResults = true;
-  const base = $('#input').value ? $('#input').value + ' ' : '';
   rec.onresult = (e) => {
+    lastSpeechAt = Date.now();
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) heard += e.results[i][0].transcript + ' ';
+      if (e.results[i].isFinal) heard += `${e.results[i][0].transcript} `;
       else interim += e.results[i][0].transcript;
     }
-    $('#input').value = base + heard + interim;
+    $('#input').value = baseText + heard + interim;
   };
   rec.onerror = (e) => {
-    if (e.error === 'not-allowed') addBubble('error', 'Microphone access was blocked. Allow it in your browser, or type instead.');
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      stopReason = 'blocked';
+      stopping = true;
+    }
   };
   rec.onend = () => {
-    const wasSpoken = heard.trim().length > 0;
-    rec = null;
-    $('#micBtn').classList.remove('live');
-    $('#micBtn').setAttribute('aria-pressed', 'false');
-    if (wasSpoken) send($('#input').value, true);
+    const now = Date.now();
+    if (!stopping && now - startedAt < MAX_TURN_MS && now - lastSpeechAt < SILENCE_MS) {
+      try {
+        rec.start(); // the browser ended early; keep listening within the limits
+        return;
+      } catch {
+        /* fall through to finish */
+      }
+    }
+    finishListening();
   };
   rec.start();
-  $('#micBtn').classList.add('live');
-  $('#micBtn').setAttribute('aria-pressed', 'true');
 }
 
-function stopListening() {
-  rec?.stop();
+function tick() {
+  const now = Date.now();
+  const left = MAX_TURN_MS - (now - startedAt);
+  const silent = now - lastSpeechAt;
+  if (left <= 0) return stopListening('limit');
+  if (silent >= SILENCE_MS) return stopListening('silence');
+  const quiet = silent > 5000 ? ` · no speech, stopping in ${Math.ceil((SILENCE_MS - silent) / 1000)}s` : '';
+  voiceStatus(`● Listening ${fmt(left)} left${quiet}`, true);
+}
+
+function stopListening(reason) {
+  if (!rec || stopping) return;
+  stopReason = reason;
+  stopping = true;
+  rec.stop();
+}
+
+function finishListening() {
+  clearInterval(ticker);
+  rec = null;
+  $('#micBtn').classList.remove('live');
+  $('#micBtn').setAttribute('aria-pressed', 'false');
+  const said = heard.trim();
+  if (stopReason === 'blocked') {
+    voiceStatus('');
+    addBubble('error', 'Microphone access was blocked. Allow it in your browser, or type instead.');
+  } else if (stopReason === 'silence' && !said) {
+    voiceStatus('Stopped: no speech for 15 seconds. Tap the mic to try again.');
+  } else if (stopReason === 'limit') {
+    voiceStatus('2-minute limit reached. Sent what you said; tap the mic to keep going.');
+  } else if (stopReason === 'silence') {
+    voiceStatus('Stopped after 15 seconds of silence. Sent what you said.');
+  } else {
+    voiceStatus('');
+  }
+  if (said) send($('#input').value, true);
 }
 
 function speak(text) {
@@ -193,6 +278,8 @@ function render() {
   $('#undoBtn').disabled = !S.canUndo;
   $('#redoBtn').disabled = !S.canRedo;
   renderProfile();
+  renderJd();
+  renderAssessment();
   renderHiddenNote();
   renderPreview();
   renderChecks();
@@ -205,6 +292,105 @@ function renderProfile() {
   $('#profileChip').hidden = !parts.length;
   $('#profileChip').textContent = parts.join(' · ');
   $('#profileChip').title = 'How the assistant reads your background. Tell it if this is wrong.';
+}
+
+function renderJd() {
+  const jd = S.jd;
+  $('#jdBar').hidden = !jd;
+  if (!jd) return;
+  const t = S.resume.target;
+  const c = S.coverage;
+  const label = [t?.title || jd.title, t?.company || jd.company].filter(Boolean).join(' at ') || jd.source;
+  const parts = [`Targeting <b>${escapeHtml(label)}</b>`];
+  if (c) {
+    parts.push(`Required keywords shown: ${c.must.matched}/${c.must.total}`);
+    if (c.nice.total) parts.push(`Nice-to-have: ${c.nice.matched}/${c.nice.total}`);
+  } else parts.push('Analysing…');
+  $('#jdText').innerHTML = parts.join(' · ');
+}
+
+function openJdDialog(error = '') {
+  $('#jdError').hidden = !error;
+  $('#jdError').textContent = error;
+  if (!error) {
+    $('#jdUrl').value = '';
+    $('#jdFile').value = '';
+    $('#jdTextIn').value = '';
+  }
+  $('#jdDialog').showModal();
+}
+
+async function submitJd(e) {
+  e.preventDefault();
+  const url = $('#jdUrl').value.trim();
+  const file = $('#jdFile').files[0];
+  const text = $('#jdTextIn').value.trim();
+  if (!url && !file && !text) return openJdDialog('Add a link, a file, or the pasted text.');
+  if (busy) return openJdDialog('Still working on your last message. Try again in a moment.');
+  const fd = new FormData();
+  if (file) fd.append('file', file);
+  else if (url) fd.append('url', url);
+  else fd.append('text', text);
+  $('#jdDialog').close();
+  addBubble('user', `Target job: ${file ? file.name : url || 'pasted job description'}`);
+  setBusy(true, url ? 'Reading the job page and tailoring your resume…' : 'Reading the job description and tailoring your resume…');
+  try {
+    const r = await api(`/api/sessions/${S.id}/jd`, { method: 'POST', body: fd });
+    applyView(r, true);
+    speak(r.reply);
+  } catch (err) {
+    setBusy(false);
+    renderChat();
+    openJdDialog(err.message);
+  }
+}
+
+const FIT_LABEL = { strong: 'Strong fit', good: 'Good fit', weak: 'Weak fit', very_weak: 'Very weak fit' };
+const QUALITY_LABEL = { 'ai-language': 'generic phrases', 'ste-passive': 'passive voice', 'ste-length': 'overlong bullets', 'first-person': 'first person' };
+
+function renderAssessment() {
+  const a = S.resume.assessment || {};
+  const parts = [];
+  if (a.cv) {
+    const q = S.quality;
+    const moved = q ? Object.keys(QUALITY_LABEL).filter((k) => q.before[k] || q.after[k]).map((k) => `${QUALITY_LABEL[k]} ${q.before[k]} → ${q.after[k]}`) : [];
+    parts.push(
+      `<div class="row"><span class="tag ${a.cv.verdict}">${a.cv.verdict === 'already_strong' ? 'Your CV is already strong' : 'Improving your CV'}</span>` +
+        `<span>${escapeHtml(a.cv.summary)}</span>${moved.length ? `<span class="muted">Measured: ${escapeHtml(moved.join(' · '))}</span>` : ''}</div>`,
+    );
+  }
+  if (a.fit) {
+    const f = a.fit;
+    const weak = f.level === 'weak' || f.level === 'very_weak';
+    parts.push(
+      `<div class="row"><span class="tag ${f.level}">${FIT_LABEL[f.level]}${f.target ? ` · ${escapeHtml(f.target)}` : ''}</span><span>${escapeHtml(f.summary)}</span></div>` +
+        (f.gaps.length ? `<div class="row muted">Gaps: ${escapeHtml(f.gaps.join(', '))}</div>` : '') +
+        (weak && f.question && !f.override ? `<div class="row q">To check: ${escapeHtml(f.question)} (answer in the chat)</div>` : '') +
+        (weak && f.better_fits.length ? `<div class="row muted">Better fits for your experience: ${escapeHtml(f.better_fits.join(', '))}</div>` : '') +
+        (weak
+          ? f.override
+            ? '<div class="row"><span class="tag improve">Applying anyway</span><span class="muted">Tailored honestly; gaps stay gaps.</span></div>'
+            : '<div class="row"><button type="button" id="applyAnyway" class="ghost">Apply anyway</button><span class="muted">I\'ll tailor it as well as I honestly can.</span></div>'
+          : ''),
+    );
+  }
+  $('#assessBar').hidden = !parts.length;
+  $('#assessBar').innerHTML = parts.join('');
+  $('#applyAnyway')?.addEventListener('click', applyAnywayClick);
+}
+
+async function applyAnywayClick() {
+  if (busy) return;
+  addBubble('user', 'Apply anyway');
+  setBusy(true, 'Tailoring your resume for this role…');
+  try {
+    const r = await api(`/api/sessions/${S.id}/apply-anyway`, { method: 'POST' });
+    applyView(r, true);
+    speak(r.reply);
+  } catch (err) {
+    setBusy(false);
+    addBubble('error', err.message);
+  }
 }
 
 function renderHiddenNote() {
@@ -259,15 +445,18 @@ function renderBadge() {
   const b = $('#fitBadge');
   if (!l) return void (b.hidden = true);
   b.hidden = false;
-  b.className = `badge ${l.fits ? (l.level ? 'tight' : 'ok') : 'bad'}`;
-  b.textContent = l.fits
-    ? `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · spacing tightened' : ''}`
-    : `${l.pages} pages · over limit`;
-  b.title = l.fits
-    ? l.level
+  const underfilled = (l.issues || []).some((i) => i.code === 'underfilled');
+  b.className = `badge ${!l.fits ? 'bad' : l.level || underfilled ? 'tight' : 'ok'}`;
+  b.textContent = !l.fits
+    ? `${l.pages} pages · over limit`
+    : `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · tightened' : underfilled ? ' · add content' : l.expand ? ' · enlarged' : ''}`;
+  b.title = !l.fits
+    ? `About ${Math.round(l.overflow * 100)}% of a page too long. Ask the assistant to tighten it.`
+    : l.level
       ? `Fits after a small spacing adjustment (level ${l.level}); text size is unchanged or within 0.5pt.`
-      : `Fits; the last page is ${Math.round(l.lastPageFill * 100)}% full.`
-    : `About ${Math.round(l.overflow * 100)}% of a page too long. Ask the assistant to tighten it.`;
+      : l.expand
+        ? `Your content filled ${Math.round(l.baseFill * 100)}% of the page at normal size, so body text and spacing were enlarged (name and headings unchanged). Adding projects, internships or achievements is better than larger text.`
+        : `Fits; the page is ${Math.round(l.lastPageFill * 100)}% full.`;
 }
 
 function fitScale() {
@@ -341,6 +530,10 @@ const label = (c) =>
     'over-limit': 'Too long', 'outside-boundary': 'Outside margins', overlap: 'Overlap', 'date-collision': 'Date collision',
     'date-misaligned': 'Date alignment', 'indent-inconsistent': 'Indentation', 'orphan-heading': 'Page break',
     'blank-page': 'Blank page', 'table-overflow': 'Table', justified: 'Word spacing', 'font-fallback': 'Font',
+    underfilled: 'Page not full', 'header-incomplete': 'Header', 'links-missing': 'Links',
+    'ste-length': 'Too long', 'ste-passive': 'Passive voice', 'ste-pattern': 'Repetitive shape', 'ste-punctuation': 'Punctuation',
+    'jd-missing': 'Job keyword', 'jd-ask': 'Job question', 'jd-gap': 'Job gap',
+    'ats-heading': 'ATS heading', 'ats-dates': 'ATS dates',
     'long-bullet': 'Long bullet', 'marker-misaligned': 'Bullet alignment', 'widow-word': 'Lone word', 'sparse-page': 'Length', 'pdf-mismatch': 'PDF',
   })[c] || c;
 
@@ -395,6 +588,7 @@ async function download(kind) {
 async function boot() {
   buildSetup();
   setupVoice();
+  $('#purposeRole').addEventListener('focus', () => (document.querySelector('input[name="purpose"][value="role"]').checked = true));
   $('#startBtn').addEventListener('click', () => start().catch((e) => alert(e.message)));
   $('#composer').addEventListener('submit', (e) => { e.preventDefault(); send($('#input').value); });
   $('#input').addEventListener('keydown', (e) => {
@@ -413,6 +607,17 @@ async function boot() {
     if (e.target.closest?.('textarea, input, [contenteditable]')) return;
     e.preventDefault();
     history(e.shiftKey ? 'redo' : 'undo');
+  });
+  $('#jdBtn').addEventListener('click', () => openJdDialog());
+  $('#jdCancel').addEventListener('click', () => $('#jdDialog').close());
+  $('#jdForm').addEventListener('submit', submitJd);
+  $('#jdRemove').addEventListener('click', async () => {
+    if (!confirm('Stop tailoring to this job? Your resume content stays as it is.')) return;
+    try {
+      applyView(await api(`/api/sessions/${S.id}/jd`, { method: 'DELETE' }));
+    } catch (err) {
+      addBubble('error', err.message);
+    }
   });
   $('#skipBtn').addEventListener('click', () => send("Skip this one, I don't have that detail."));
   $('#finishBtn').addEventListener('click', () => send("That's everything I have for now. Please finish the resume and run your final checks."));

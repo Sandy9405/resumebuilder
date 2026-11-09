@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lintResume, sourceNumbers } from '../shared/lint.js';
+import { lintResume, sourceNumbers, atsIssues, headerIssues } from '../shared/lint.js';
 
 const resume = (bullets, extra = {}) => ({
   header: { name: 'A' },
-  sections: [{ id: 's1', kind: 'experience', title: 'X', items: [{ id: 'i1', heading: 'Eng', org: 'Acme', location: '', dates: '2021 – 2023', detail: '', bullets, ...extra }] }],
+  sections: [{ id: 's1', kind: 'experience', title: 'Experience', items: [{ id: 'i1', heading: 'Eng', org: 'Acme', location: '', dates: '2021 – 2023', detail: '', bullets, ...extra }] }],
 });
 const codes = (issues) => issues.map((i) => i.code);
 
@@ -46,5 +46,24 @@ test('AI phrasing, first person, placeholders, duplicates, repeated verbs', () =
 });
 
 test('clean resume has no issues', () => {
-  assert.deepEqual(lintResume(resume(['Built a lead-tracking dashboard for the sales team']), 'Acme 2021 2023'), []);
+  const r = resume(['Built a lead-tracking dashboard for the sales team']);
+  r.header = { name: 'A', email: 'a@x.com', phone: '1', tagline: 'Engineer', location: 'Pune', links: ['linkedin.com/in/a'] };
+  assert.deepEqual(lintResume(r, 'Acme 2021 2023 1'), []);
+});
+
+test('ATS: creative headings, missing contact, two-digit years and mixed date formats are flagged', () => {
+  const r = {
+    header: { name: 'A' },
+    sections: [{ id: 's', kind: 'experience', title: 'Where I have been', items: [
+      { id: 'a', dates: "July'17 – Apr'18", bullets: [] },
+      { id: 'b', dates: 'Jan 2020 – Mar 2021', bullets: [] },
+      { id: 'c', dates: '06/2019 – 12/2019', bullets: [] },
+    ] }],
+  };
+  const codes = atsIssues(r).map((i) => i.code);
+  assert.ok(codes.includes('ats-heading'));
+  assert.equal(headerIssues(r).filter((i) => /email|phone/i.test(i.message)).length, 2);
+  assert.ok(codes.filter((c) => c === 'ats-dates').length >= 2);
+  r.sections[0].title = 'Professional Experience';
+  assert.ok(!atsIssues(r).some((i) => i.code === 'ats-heading'));
 });

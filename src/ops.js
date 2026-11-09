@@ -16,14 +16,25 @@ export function emptyResume(settings = {}) {
       template: TEMPLATES[settings.template] ? settings.template : 'hbs',
       pages: settings.pages === 2 ? 2 : 1,
       buildMode: settings.buildMode || 'talk',
+      purpose: cleanPurpose(settings.purpose),
     },
     header: { name: '', tagline: '', email: '', phone: '', location: '', links: [], details: [] },
     profile: emptyProfile(),
+    target: null,
+    assessment: { cv: null, fit: null },
     sections: [],
   };
 }
 
 export const CAREER_STAGES = ['student', 'early', 'mid', 'experienced', 'senior'];
+export const FIT_LEVELS = ['strong', 'good', 'weak', 'very_weak'];
+
+/** What the resume is for: a specific job (JD), a type of role, or general use. */
+export function cleanPurpose(p) {
+  const type = ['jd', 'role', 'general'].includes(p?.type) ? p.type : '';
+  const role = typeof p?.role === 'string' ? p.role.trim().slice(0, 120) : '';
+  return { type: type === 'role' && !role ? 'general' : type, role: type === 'role' ? role : '' };
+}
 
 export function emptyProfile() {
   return {
@@ -54,7 +65,27 @@ function cleanItem(raw, id, prev) {
     // Detail kept for longer versions of the resume but not shown at the current length.
     reserve: raw?.reserve_bullets !== undefined ? strList(raw.reserve_bullets) : prev?.reserve || [],
     hidden: typeof raw?.hidden === 'boolean' ? raw.hidden : prev?.hidden || false,
+    // Bullets in the user's own words: kept verbatim, exempt from style rewriting.
+    locked: raw?.user_wording !== undefined ? strList(raw.user_wording) : prev?.locked || [],
   };
+}
+
+/** Every locked bullet must appear word for word in bullets or reserve. */
+function checkLocked(item, prev, userRequestedChange = false) {
+  const kept = new Set([...item.bullets, ...item.reserve]);
+  const missing = item.locked.filter((b) => !kept.has(b));
+  if (missing.length) {
+    throw new OpError(
+      `These bullets are the user's own wording and must stay exactly as written: ${missing.map((b) => `"${b}"`).join('; ')}. Copy them unchanged into bullets (or reserve_bullets). If the user asked to change one, put their new wording in both bullets and user_wording.`,
+    );
+  }
+  // Rewording or removing a dictated bullet needs the user's explicit request.
+  const dropped = (prev?.locked || []).filter((b) => !item.locked.includes(b) || !kept.has(b));
+  if (dropped.length && !userRequestedChange) {
+    throw new OpError(
+      `The user dictated ${dropped.map((b) => `"${b}"`).join('; ')}. Keep it unchanged in bullets and user_wording. Only if the user explicitly asked to reword or remove it, call update_item again with user_requested_change=true.`,
+    );
+  }
 }
 
 function cleanHeader(raw) {
@@ -126,7 +157,11 @@ export function applyOp(resume, name, input) {
           kind: kindOf(s.kind),
           title: str(s.title) || kindOf(s.kind),
           hidden: false,
-          items: (s.items || []).map((it) => cleanItem(it)),
+          items: (s.items || []).map((it) => {
+            const item = cleanItem(it);
+            checkLocked(item);
+            return item;
+          }),
         })),
         resume.settings.template,
       );
@@ -162,13 +197,16 @@ export function applyOp(resume, name, input) {
       const sec = findSection(resume, input.section_id);
       if (input.after_item_id && input.after_item_id !== '__top__') findItemIndex(sec, input.after_item_id);
       const item = cleanItem(input.item);
+      checkLocked(item);
       insertAfter(sec.items, item, input.after_item_id);
       return `Added "${item.org || item.heading}" to ${sec.title} (${item.id})`;
     }
     case 'update_item': {
       const sec = findSection(resume, input.section_id);
       const i = findItemIndex(sec, input.item_id);
-      sec.items[i] = cleanItem(input.item, sec.items[i].id, sec.items[i]);
+      const next = cleanItem(input.item, sec.items[i].id, sec.items[i]);
+      checkLocked(next, sec.items[i], input.user_requested_change === true);
+      sec.items[i] = next;
       return `Updated "${sec.items[i].org || sec.items[i].heading}" in ${sec.title}`;
     }
     case 'remove_item': {
@@ -191,6 +229,59 @@ export function applyOp(resume, name, input) {
       const it = sec.items[findItemIndex(sec, input.item_id)];
       it.hidden = !!input.hidden;
       return `${input.hidden ? 'Hid' : 'Showed'} "${it.org || it.heading}" (kept in your data)`;
+    }
+    case 'set_target_job': {
+      const kws = (Array.isArray(input.keywords) ? input.keywords : [])
+        .map((k) => ({
+          term: str(k?.term),
+          aliases: strList(k?.aliases).slice(0, 5),
+          importance: k?.importance === 'must' ? 'must' : 'nice',
+          evidence: ['yes', 'no', 'unknown'].includes(k?.evidence) ? k.evidence : 'unknown',
+        }))
+        .filter((k) => k.term)
+        .slice(0, 40);
+      resume.target = { title: str(input.title), company: str(input.company), seniority: str(input.seniority), keywords: kws };
+      const must = kws.filter((k) => k.importance === 'must').length;
+      return `Target job: ${[resume.target.title, resume.target.company].filter(Boolean).join(' at ') || 'set'} (${kws.length} keywords, ${must} required)`;
+    }
+    case 'set_purpose': {
+      resume.settings.purpose = cleanPurpose(input);
+      const pp = resume.settings.purpose;
+      return pp.type === 'role' ? `Purpose: applying for ${pp.role} roles` : pp.type === 'jd' ? 'Purpose: a specific job' : 'Purpose: general resume';
+    }
+    case 'assess_cv': {
+      const verdict = input.verdict === 'already_strong' ? 'already_strong' : 'improve';
+      resume.assessment = { ...(resume.assessment || {}), cv: { verdict, summary: str(input.summary), improvements: strList(input.improvements).slice(0, 8) } };
+      return verdict === 'already_strong' ? 'Assessment: the CV is already strong; only light polish' : 'Assessment: the CV can be improved';
+    }
+    case 'assess_fit': {
+      const level = FIT_LEVELS.includes(input.level) ? input.level : 'weak';
+      const prev = resume.assessment?.fit;
+      const sameTarget = prev && prev.target === str(input.target);
+      resume.assessment = {
+        ...(resume.assessment || {}),
+        fit: {
+          level,
+          target: str(input.target),
+          summary: str(input.summary),
+          gaps: strList(input.gaps).slice(0, 8),
+          question: str(input.decisive_question),
+          better_fits: strList(input.better_fit_roles).slice(0, 4),
+          // "Apply anyway" survives re-assessment of the same target.
+          override: sameTarget ? !!prev.override : false,
+        },
+      };
+      let note = '';
+      const musts = (resume.target?.keywords || []).filter((k) => k.importance === 'must');
+      const absent = musts.filter((k) => k.evidence === 'no').length;
+      if (musts.length && absent / musts.length >= 0.5 && ['strong', 'good'].includes(level)) {
+        note = ` Note: ${absent} of ${musts.length} required keywords are marked as absent from the user's material, which does not match a "${level}" fit. Re-check.`;
+      }
+      return `Fit for ${resume.assessment.fit.target || 'the target'}: ${level.replace('_', ' ')}${note}`;
+    }
+    case 'clear_target_job': {
+      resume.target = null;
+      return 'Stopped targeting a specific job';
     }
     case 'set_format': {
       const before = resume.settings.template;
@@ -242,8 +333,12 @@ export function applyManualEdit(resume, path, value) {
   if (parts[2] === 'bullets') {
     const n = Number(parts[3]);
     if (!Number.isInteger(n) || n < 0 || n >= item.bullets.length) throw new OpError('Bad bullet index');
-    if (v) item.bullets[n] = v;
-    else item.bullets.splice(n, 1);
+    const old = item.bullets[n];
+    item.locked = (item.locked || []).filter((b) => b !== old);
+    if (v) {
+      item.bullets[n] = v;
+      item.locked.push(v); // typed by the user: their wording, keep it
+    } else item.bullets.splice(n, 1);
     return;
   }
   if (!['heading', 'org', 'location', 'dates', 'detail', 'note'].includes(parts[2])) throw new OpError('Bad field');
@@ -254,10 +349,13 @@ export function applyManualEdit(resume, path, value) {
 export function normalizeResume(r) {
   r.header = cleanHeader(r.header);
   r.profile = { ...emptyProfile(), ...(r.profile || {}) };
+  r.target = r.target || null;
+  r.assessment = r.assessment || { cv: null, fit: null };
+  r.settings.purpose = cleanPurpose(r.settings.purpose);
   r.sections = (r.sections || []).map((s) => ({
     ...s,
     hidden: !!s.hidden,
-    items: (s.items || []).map((it) => ({ note: '', reserve: [], hidden: false, ...it })),
+    items: (s.items || []).map((it) => ({ note: '', reserve: [], hidden: false, locked: [], ...it })),
   }));
   return r;
 }
@@ -291,3 +389,9 @@ export function redo(session) {
 }
 
 export { snap as snapshot };
+
+/** The user chose "Apply anyway" despite a weak fit. */
+export function applyAnyway(resume) {
+  if (!resume.assessment?.fit) throw new OpError('There is no fit assessment to override.');
+  resume.assessment.fit.override = true;
+}
