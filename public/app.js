@@ -218,10 +218,26 @@ let ticker = null;
 let stopReason = '';
 let stopping = false;
 
-function setupVoice() {
+// 'sarvam': record clips and transcribe on the server (accurate, knows the
+// user's names). 'browser': the browser's own recognition, used only when the
+// server has no Sarvam key (e.g. local development).
+let voiceMode = 'browser';
+
+async function setupVoice() {
+  try {
+    voiceMode = (await (await fetch('/api/voice')).json()).provider;
+  } catch {
+    voiceMode = 'browser';
+  }
+  const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  if (voiceMode === 'sarvam' && canRecord) {
+    $('#micBtn').addEventListener('click', () => (recState ? stopRecording('user') : startRecording()));
+    return;
+  }
+  voiceMode = 'browser';
   if (!Recognition) {
     $('#micBtn').disabled = true;
-    $('#micBtn').title = 'Voice input needs Chrome, Edge or Safari. You can type instead.';
+    $('#micBtn').title = 'Voice input is not available in this browser. You can type instead.';
     return;
   }
   $('#micBtn').addEventListener('click', () => (rec ? stopListening('user') : startListening()));
@@ -325,6 +341,144 @@ function finishListening() {
     voiceStatus('');
   }
   if (said) send($('#input').value, true);
+}
+
+// ---------- Voice: recorded clips transcribed by Sarvam ----------
+// Sarvam's REST API takes clips under 30 seconds, so one recording is split
+// into segments at natural pauses (25 s at the latest). Each segment is
+// transcribed while the person keeps talking, so the text is ready almost as
+// soon as they stop. Segments with no speech are never uploaded. The same
+// 2-minute cap and 15-second silence stop apply.
+const SEG_MIN_MS = window.__voiceLimits?.segMin || 8000;
+const SEG_MAX_MS = 25000;
+const SEG_PAUSE_MS = 700;
+let recState = null;
+
+function pickMime() {
+  for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) {
+    if (MediaRecorder.isTypeSupported?.(m)) return m;
+  }
+  return '';
+}
+
+async function startRecording() {
+  if (busy || recState) return;
+  window.speechSynthesis?.cancel();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch {
+    addBubble('error', 'Microphone access was blocked. Allow it in your browser, or type instead.');
+    return;
+  }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const now = Date.now();
+  recState = {
+    stream, ctx, analyser, buf: new Float32Array(analyser.fftSize), mime: pickMime(),
+    segments: [], seg: null, startedAt: now, lastSpeechAt: now, floor: 0.004,
+    stopReason: '', errors: 0, errorMsg: '', baseText: $('#input').value ? `${$('#input').value} ` : '',
+  };
+  newSegment();
+  $('#micBtn').classList.add('live');
+  $('#micBtn').setAttribute('aria-pressed', 'true');
+  recState.ticker = setInterval(recTick, 100);
+  recTick();
+}
+
+function newSegment() {
+  const st = recState;
+  const rec = new MediaRecorder(st.stream, st.mime ? { mimeType: st.mime } : undefined);
+  const seg = { rec, chunks: [], hadSpeech: false, startedAt: Date.now() };
+  rec.ondataavailable = (e) => e.data?.size && seg.chunks.push(e.data);
+  seg.result = new Promise((resolve) => {
+    rec.onstop = () => {
+      if (!seg.hadSpeech || !seg.chunks.length) return resolve('');
+      const blob = new Blob(seg.chunks, { type: rec.mimeType || st.mime || 'audio/webm' });
+      resolve(
+        transcribeClip(blob).catch((err) => {
+          st.errors++;
+          st.errorMsg = err.message;
+          return '';
+        }),
+      );
+    };
+  });
+  st.segments.push(seg);
+  st.seg = seg;
+  rec.start();
+}
+
+async function transcribeClip(blob) {
+  const fd = new FormData();
+  const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+  fd.append('audio', blob, `clip.${ext}`);
+  return (await api(`/api/sessions/${S.id}/transcribe`, { method: 'POST', body: fd })).transcript || '';
+}
+
+function micLevel(st) {
+  st.analyser.getFloatTimeDomainData(st.buf);
+  let sum = 0;
+  for (const v of st.buf) sum += v * v;
+  return Math.sqrt(sum / st.buf.length);
+}
+
+function recTick() {
+  const st = recState;
+  if (!st || st.stopReason) return;
+  const now = Date.now();
+  const rms = micLevel(st);
+  // Speech is anything clearly above the room's background level.
+  if (rms > Math.max(0.012, st.floor * 3.5)) {
+    st.lastSpeechAt = now;
+    st.seg.hadSpeech = true;
+  } else {
+    st.floor = st.floor * 0.95 + rms * 0.05;
+  }
+  const left = MAX_TURN_MS - (now - st.startedAt);
+  const silent = now - st.lastSpeechAt;
+  if (left <= 0) return stopRecording('limit');
+  if (silent >= SILENCE_MS) return stopRecording('silence');
+  const segLen = now - st.seg.startedAt;
+  if (segLen >= SEG_MAX_MS || (segLen >= SEG_MIN_MS && st.seg.hadSpeech && silent >= SEG_PAUSE_MS)) {
+    st.seg.rec.stop(); // its transcription starts now, while recording continues
+    newSegment();
+  }
+  const quiet = silent > 5000 ? ` · no speech, stopping in ${Math.ceil((SILENCE_MS - silent) / 1000)}s` : '';
+  voiceStatus(`● Recording ${fmt(left)} left${quiet}`, true);
+}
+
+async function stopRecording(reason) {
+  const st = recState;
+  if (!st || st.stopReason) return;
+  st.stopReason = reason;
+  clearInterval(st.ticker);
+  if (st.seg.rec.state !== 'inactive') st.seg.rec.stop();
+  st.stream.getTracks().forEach((t) => t.stop());
+  st.ctx.close().catch(() => {});
+  $('#micBtn').classList.remove('live');
+  $('#micBtn').setAttribute('aria-pressed', 'false');
+  if (st.segments.some((x) => x.hadSpeech)) voiceStatus('Transcribing…', true);
+  const texts = await Promise.all(st.segments.map((x) => x.result));
+  recState = null;
+  const said = texts.filter(Boolean).join(' ').trim();
+  if (!said) {
+    voiceStatus(reason === 'silence' ? 'Stopped: no speech for 15 seconds. Tap the mic to try again.' : '');
+    if (st.errors) addBubble('error', st.errorMsg || "Couldn't transcribe that. Please try again or type instead.");
+    return;
+  }
+  const partial = st.errors ? ' Part of it could not be transcribed; please check.' : '';
+  voiceStatus(
+    reason === 'limit'
+      ? `2-minute limit reached. Sent what you said; tap the mic to keep going.${partial}`
+      : reason === 'silence'
+        ? `Stopped after 15 seconds of silence. Sent what you said.${partial}`
+        : partial.trim(),
+  );
+  $('#input').value = st.baseText + said;
+  send($('#input').value, true);
 }
 
 function speak(text) {
