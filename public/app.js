@@ -25,27 +25,90 @@ async function api(path, opts = {}) {
 }
 
 // ---------- Setup ----------
-// Recent graduates see the academic formats; working professionals see
-// experience-first formats. Any format stays available from the toolbar later.
+// ---------- Setup: one question per screen ----------
+// Recent graduates see the academic formats; experienced people see
+// experience-first ones. Any layout stays available from the toolbar later.
+const THUMB = '<i class="t-name"></i><i class="t-sub"></i><i class="t-h"></i><i class="w9"></i><i class="w8"></i><i class="w9"></i><i class="t-h"></i><i class="w8"></i><i class="w6"></i><i class="t-h"></i><i class="w7"></i>';
+
 function renderFormatCards() {
   const stage = document.querySelector('input[name="stage"]:checked')?.value || 'recent';
   const ids = FORMATS_BY_STAGE[stage] || Object.keys(TEMPLATES);
   $('#templateCards').innerHTML = ids
     .map((id, i) => {
       const t = TEMPLATES[id];
-      return `<label class="card"><input type="radio" name="template" value="${t.id}" ${i === 0 ? 'checked' : ''}>
-      <b>${t.label}${i === 0 && stage !== 'recent' ? ' (recommended)' : ''}</b><span>${t.blurb}</span></label>`;
+      const rec = i === 0 && stage === 'experienced' ? '<em class="tag rec">Recommended</em>' : '';
+      return `<label class="choice"><input type="radio" name="template" value="${t.id}">${rec}
+      <span class="thumb thumb-${t.id}" aria-hidden="true">${THUMB}</span>
+      <b>${t.label}</b><span>${t.blurb}</span></label>`;
     })
     .join('');
+  $('#templateCards').querySelectorAll('input').forEach((r) => r.addEventListener('change', onChoice));
 }
 
+const STEPS = 4;
+let step = 1;
+const checked = (name) => document.querySelector(`input[name="${name}"]:checked`)?.value;
+
+function stepValid(n) {
+  if (n === 1) return !!checked('stage');
+  if (n === 2) return !!checked('buildMode');
+  if (n === 3) return !!checked('template');
+  return !!checked('pages') && (checked('purpose') !== 'role' || $('#purposeRole').value.trim().length > 1);
+}
+
+function showStep(n) {
+  step = n;
+  document.querySelectorAll('.step').forEach((el) => (el.hidden = Number(el.dataset.step) !== n));
+  document.querySelectorAll('.progress span').forEach((el, i) => {
+    el.classList.toggle('done', i < n - 1);
+    el.classList.toggle('now', i === n - 1);
+  });
+  $('#backBtn').hidden = n === 1;
+  $('#nextBtn').hidden = n === STEPS;
+  $('#startBtn').hidden = n !== STEPS;
+  updateNav();
+  document.querySelector(`.step[data-step="${n}"] h1`)?.focus({ preventScroll: true });
+}
+
+function updateNav() {
+  $('#nextBtn').disabled = !stepValid(step);
+  $('#startBtn').disabled = !stepValid(STEPS);
+}
+
+// Single-choice steps move on by themselves, like a native setup flow.
+function onChoice() {
+  updateNav();
+  if (step === 1) renderFormatCards();
+  if (step < STEPS && stepValid(step)) setTimeout(() => step < STEPS && stepValid(step) && showStep(step + 1), 260);
+}
+
+const PURPOSE_HINT = {
+  general: 'A strong all-round resume, no single target.',
+  role: 'I\'ll aim your resume at this kind of role and tell you honestly how well you fit.',
+  jd: 'Next, you\'ll paste the job link or description. I\'ll tailor to it and tell you how well you fit.',
+};
+
 function buildSetup() {
-  renderFormatCards();
-  document.querySelectorAll('input[name="stage"]').forEach((r) => r.addEventListener('change', renderFormatCards));
+  document.querySelectorAll('input[name="stage"], input[name="buildMode"]').forEach((r) => r.addEventListener('change', onChoice));
+  document.querySelectorAll('input[name="pages"], input[name="purpose"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      const p = checked('purpose');
+      $('#purposeRole').hidden = p !== 'role';
+      $('#purposeHint').textContent = PURPOSE_HINT[p] || '';
+      if (p === 'role') $('#purposeRole').focus();
+      updateNav();
+    }),
+  );
+  $('#purposeRole').addEventListener('input', updateNav);
+  $('#nextBtn').addEventListener('click', () => stepValid(step) && showStep(step + 1));
+  $('#backBtn').addEventListener('click', () => showStep(Math.max(1, step - 1)));
+  document.querySelectorAll('.step h1').forEach((h) => h.setAttribute('tabindex', '-1'));
   $('#templateSel').innerHTML = Object.values(TEMPLATES).map((t) => `<option value="${t.id}">${t.label}</option>`).join('');
+  showStep(1);
 }
 
 async function start() {
+  if (!stepValid(STEPS)) return;
   const val = (n) => document.querySelector(`input[name="${n}"]:checked`).value;
   const purposeType = val('purpose');
   const role = $('#purposeRole').value.trim();
@@ -160,6 +223,7 @@ async function confirmCurrent() {
 
 function setBusy(on, label = 'Working on it…') {
   busy = on;
+  if (on) setComposerMode('compact');
   $('#sendBtn').disabled = on;
   $('#messages .typing')?.remove();
   if (on) addBubble('assistant typing', label);
@@ -232,6 +296,7 @@ async function setupVoice() {
   const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
   if (voiceMode === 'sarvam' && canRecord) {
     $('#micBtn').addEventListener('click', () => (recState ? stopRecording('user') : startRecording()));
+    if (S) updateComposer();
     return;
   }
   voiceMode = 'browser';
@@ -241,6 +306,7 @@ async function setupVoice() {
     return;
   }
   $('#micBtn').addEventListener('click', () => (rec ? stopListening('user') : startListening()));
+  if (S) updateComposer();
 }
 
 const fmt = (ms) => {
@@ -249,10 +315,58 @@ const fmt = (ms) => {
 };
 
 function voiceStatus(text, live = false) {
+  if (live) {
+    $('#voiceSub').textContent = text.replace(/^●\s*/, '');
+    return;
+  }
   const el = $('#voiceStatus');
   el.hidden = !text;
   el.textContent = text || '';
-  el.classList.toggle('live', live);
+}
+
+// ---------- Composer modes ----------
+// compact: type, or tap the small mic. story: the AI asked for something, so
+// voice becomes the big, labelled answer. recording / transcribing: live states.
+let typedOverride = false; // the user chose "or type instead" for this question
+let transcribing = false;
+
+function voiceCopy() {
+  return voiceMode === 'sarvam'
+    ? { title: 'Tell it by voice', sub: 'Hindi, English or both · up to 2 min' }
+    : { title: 'Tell it by voice', sub: 'Speak in English · up to 2 min' };
+}
+
+function setComposerMode(mode) {
+  $('#composer').dataset.mode = mode;
+  const c = voiceCopy();
+  // Only label it "Voice AI" when the AI transcriber (Sarvam) is doing the listening.
+  $('#voicePill').hidden = voiceMode !== 'sarvam' || mode === 'transcribing';
+  if (mode === 'story' || mode === 'compact') {
+    $('#voiceTitle').textContent = c.title;
+    $('#voiceSub').textContent = c.sub;
+    $('#micBtn').setAttribute('aria-label', voiceMode === 'sarvam' ? 'Answer with Voice AI' : 'Answer by voice');
+  }
+  if (mode === 'recording') {
+    $('#voiceTitle').textContent = 'Listening…';
+    $('#micBtn').setAttribute('aria-label', 'Finish recording');
+  }
+  if (mode === 'transcribing') {
+    $('#voiceTitle').textContent = 'Turning your words into text…';
+    $('#voiceSub').textContent = 'One moment';
+  }
+}
+
+function updateComposer() {
+  if (recState || rec || transcribing) return;
+  const last = S?.chat?.[S.chat.length - 1];
+  const asked = last?.role === 'assistant' && (S.ask || /\?\s*$/.test(last.text || ''));
+  const canVoice = !$('#micBtn').disabled;
+  setComposerMode(!busy && asked && canVoice && !typedOverride ? 'story' : 'compact');
+}
+
+function setMeter(levels) {
+  const bars = $('#voiceMeter').children;
+  for (let i = 0; i < bars.length; i++) bars[i].style.setProperty('--l', String(Math.min(1, levels[i] || 0)));
 }
 
 function startListening() {
@@ -265,6 +379,7 @@ function startListening() {
   startedAt = lastSpeechAt = Date.now();
   $('#micBtn').classList.add('live');
   $('#micBtn').setAttribute('aria-pressed', 'true');
+  setComposerMode('recording');
   ticker = setInterval(tick, 250);
   tick();
   startRecognizer();
@@ -312,6 +427,8 @@ function tick() {
   if (left <= 0) return stopListening('limit');
   if (silent >= SILENCE_MS) return stopListening('silence');
   const quiet = silent > 5000 ? ` · no speech, stopping in ${Math.ceil((SILENCE_MS - silent) / 1000)}s` : '';
+  // No level data from the browser recogniser: animate gently while speech is recent.
+  setMeter(Array.from({ length: 14 }, () => (silent < 1200 ? 0.25 + Math.random() * 0.6 : 0.05)));
   voiceStatus(`● Listening ${fmt(left)} left${quiet}`, true);
 }
 
@@ -325,6 +442,8 @@ function stopListening(reason) {
 function finishListening() {
   clearInterval(ticker);
   rec = null;
+  setMeter([]);
+  updateComposer();
   $('#micBtn').classList.remove('live');
   $('#micBtn').setAttribute('aria-pressed', 'false');
   const said = heard.trim();
@@ -384,6 +503,8 @@ async function startRecording() {
   newSegment();
   $('#micBtn').classList.add('live');
   $('#micBtn').setAttribute('aria-pressed', 'true');
+  recState.levels = [];
+  setComposerMode('recording');
   recState.ticker = setInterval(recTick, 100);
   recTick();
 }
@@ -430,6 +551,9 @@ function recTick() {
   if (!st || st.stopReason) return;
   const now = Date.now();
   const rms = micLevel(st);
+  st.levels.push(Math.min(1, rms * 9));
+  if (st.levels.length > 14) st.levels.shift();
+  setMeter(st.levels);
   // Speech is anything clearly above the room's background level.
   if (rms > Math.max(0.012, st.floor * 3.5)) {
     st.lastSpeechAt = now;
@@ -447,7 +571,7 @@ function recTick() {
     newSegment();
   }
   const quiet = silent > 5000 ? ` · no speech, stopping in ${Math.ceil((SILENCE_MS - silent) / 1000)}s` : '';
-  voiceStatus(`● Recording ${fmt(left)} left${quiet}`, true);
+  voiceStatus(`${fmt(left)} left · tap stop when you're done${quiet}`, true);
 }
 
 async function stopRecording(reason) {
@@ -460,9 +584,16 @@ async function stopRecording(reason) {
   st.ctx.close().catch(() => {});
   $('#micBtn').classList.remove('live');
   $('#micBtn').setAttribute('aria-pressed', 'false');
-  if (st.segments.some((x) => x.hadSpeech)) voiceStatus('Transcribing…', true);
+  const hadSpeech = st.segments.some((x) => x.hadSpeech);
+  if (hadSpeech) {
+    transcribing = true;
+    setComposerMode('transcribing');
+  }
   const texts = await Promise.all(st.segments.map((x) => x.result));
   recState = null;
+  transcribing = false;
+  setMeter([]);
+  updateComposer();
   const said = texts.filter(Boolean).join(' ').trim();
   if (!said) {
     voiceStatus(reason === 'silence' ? 'Stopped: no speech for 15 seconds. Tap the mic to try again.' : '');
@@ -504,6 +635,7 @@ function changedItems(before, after) {
 }
 
 function applyView(v, fromTurn = false) {
+  if (fromTurn) typedOverride = false; // a new question gets the voice prompt again
   const changed = JSON.stringify(v.resume) !== JSON.stringify(S?.resume);
   if (changed && S?.resume?.sections?.length) lastTurnKeys = pendingFlash = changedItems(S.resume, v.resume);
   S = { ...S, ...v };
@@ -521,12 +653,18 @@ function render() {
   $('#uploadZone').hidden = !needsUpload;
   $('#undoBtn').disabled = !S.canUndo;
   $('#redoBtn').disabled = !S.canRedo;
+  // Nothing to check or download until there is a first draft.
+  const draft = r.sections.some((x) => !x.hidden && x.items.some((i) => !i.hidden));
+  $('#checksBtn').disabled = !draft;
+  $('#downloadBtn').disabled = !draft;
+  if (!draft) $('#checksPanel').hidden = true;
   renderProfile();
   renderJd();
   renderEvidence();
   renderAssessment();
   renderHiddenNote();
   renderInsights();
+  updateComposer();
   renderPreview();
   renderChecks();
 }
@@ -860,8 +998,11 @@ function allIssues() {
 function renderChecks() {
   const issues = allIssues();
   const serious = issues.filter((i) => i.level !== 'info');
-  $('#checksCount').textContent = serious.length + (issues.length > serious.length ? `+${issues.length - serious.length}` : '');
-  $('#checksCount').className = `count ${issues.some((i) => i.level === 'error') ? 'err' : serious.length ? 'warn' : ''}`;
+  // One number: things worth fixing. Tips (info) are listed in the panel but not counted.
+  $('#checksCount').textContent = serious.length ? String(serious.length) : '';
+  const draft = S.resume.sections.some((x) => !x.hidden && x.items.some((i) => !i.hidden));
+  $('#checksCount').hidden = !serious.length || !draft;
+  $('#checksCount').className = `count ${issues.some((i) => i.level === 'error') ? 'err' : 'warn'}`;
   const panel = $('#checksPanel');
   panel.innerHTML = issues.length
     ? `<ul>${issues.map((i, n) => `<li class="${i.level}" data-n="${n}"><b>${label(i.code)}</b> ${escapeHtml(i.message)}</li>`).join('')}</ul>`
@@ -950,7 +1091,6 @@ function markResumeUpdated() {
 async function boot() {
   buildSetup();
   setupVoice();
-  $('#purposeRole').addEventListener('focus', () => (document.querySelector('input[name="purpose"][value="role"]').checked = true));
   $('#startBtn').addEventListener('click', () => start().catch((e) => alert(e.message)));
   $('#composer').addEventListener('submit', (e) => { e.preventDefault(); send($('#input').value); });
   $('#input').addEventListener('keydown', (e) => {
@@ -975,6 +1115,30 @@ async function boot() {
     if ($('#insights').classList.contains('nodetails')) e.preventDefault();
   });
   showTab('chat');
+  $('#typeInstead').addEventListener('click', () => {
+    typedOverride = true;
+    setComposerMode('compact');
+    $('#input').focus();
+  });
+  $('#input').addEventListener('focus', () => {
+    if ($('#composer').dataset.mode === 'story') {
+      typedOverride = true;
+      setComposerMode('compact');
+    }
+  });
+  const menu = $('#downloadMenu');
+  const closeMenu = () => {
+    menu.hidden = true;
+    $('#downloadBtn').setAttribute('aria-expanded', 'false');
+  };
+  $('#downloadBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    $('#downloadBtn').setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', (e) => !e.target.closest('.menu-wrap') && closeMenu());
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && closeMenu());
+  menu.addEventListener('click', closeMenu);
   $('#jdBtn').addEventListener('click', () => openJdDialog());
   $('#jdCancel').addEventListener('click', () => $('#jdDialog').close());
   $('#jdForm').addEventListener('submit', submitJd);

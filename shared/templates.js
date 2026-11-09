@@ -168,7 +168,7 @@ export const TEMPLATES = {
 TEMPLATES.pro = {
   id: 'pro',
   label: 'Experienced Professional',
-  blurb: 'Experience first: what you built and the results it got, then education. For 5+ years, or switching jobs.',
+  blurb: 'Experience first: what you built and the results it got, then education. For working professionals and job switchers.',
   reference: 'Sandesh_Bora_CV.pdf',
   audience: 'experienced',
   page: A4,
@@ -201,11 +201,11 @@ TEMPLATES.pro = {
   sectionOrder: ['summary', 'experience', 'projects', 'leadership', 'education', 'achievements', 'certifications', 'skills', 'extracurricular', 'other'],
 };
 
-// Formats offered by career stage. Recent graduates get the academic formats;
-// working professionals get experience-first formats.
+// Formats offered by career stage. Two stages only: recent graduates get the
+// academic formats; experienced people (anyone working, or switching jobs) get
+// experience-first formats.
 export const FORMATS_BY_STAGE = {
   recent: ['iitb', 'iima', 'hbs'],
-  working: ['pro', 'hbs'],
   experienced: ['pro', 'hbs'],
 };
 

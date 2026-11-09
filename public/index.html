@@ -2,58 +2,104 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <title>Resume Builder</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <!-- Setup: the three questions -->
+  <!-- Icons, defined once -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-mic" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6.25-3.75a.75.75 0 0 0-1.5 0 4.75 4.75 0 0 1-9.5 0 .75.75 0 0 0-1.5 0 6.25 6.25 0 0 0 5.5 6.2V20h-2.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-2.5v-2.55a6.25 6.25 0 0 0 5.5-6.2Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path fill="currentColor" d="M12 4.5a1 1 0 0 1 .7.29l6 6a1 1 0 1 1-1.4 1.42L13 7.91V19a1 1 0 1 1-2 0V7.91l-4.3 4.3a1 1 0 0 1-1.4-1.42l6-6a1 1 0 0 1 .7-.29Z"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="m20 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l7.8-7.8a3.3 3.3 0 0 1 4.7 4.7l-7.8 7.8a1.7 1.7 0 0 1-2.4-2.4l7.1-7.1"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 7 5 11l4 4M5 11h9a5 5 0 0 1 0 10h-2"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m15 7 4 4-4 4m4-4h-9a5 5 0 0 0 0 10h2"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-grad" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="m12 4 10 5-10 5L2 9l10-5Z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M6 11v4.5c0 1.5 2.7 3 6 3s6-1.5 6-3V11M22 9v5"/></symbol>
+    <symbol id="i-case" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-both" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M11 3H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="M11 3v4h4"/><rect x="14.5" y="10" width="4" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M13 15.5a3.5 3.5 0 0 0 7 0M16.5 19v2"/></symbol>
+  </svg>
+
+  <!-- Setup: one question per screen -->
   <main id="setup" class="setup" hidden>
-    <h1>Build your resume</h1>
-    <p class="lede">A few quick choices, then we'll get to work. You can change format and length later.</p>
+    <div class="setup-inner">
+      <header class="setup-top">
+        <div class="brand"><span class="logo" aria-hidden="true"></span>Resume Builder</div>
+        <div class="progress" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      </header>
 
-    <fieldset>
-      <legend>1. How would you like to build your resume?</legend>
-      <div class="cards" data-name="buildMode">
-        <label class="card"><input type="radio" name="buildMode" value="upload" checked><b>Upload my existing CV</b><span>PDF, DOCX or TXT. I'll rewrite it, not just reformat it.</span></label>
-        <label class="card"><input type="radio" name="buildMode" value="talk"><b>Talk about my experience</b><span>Speak or type. I'll interview you one question at a time.</span></label>
-        <label class="card"><input type="radio" name="buildMode" value="both"><b>Upload my CV and add more by voice</b><span>Start from your CV, then fill gaps and correct details.</span></label>
-      </div>
-    </fieldset>
+      <section class="step" data-step="1" aria-labelledby="s1">
+        <p class="eyebrow">Step 1 of 4</p>
+        <h1 id="s1">Where are you in your career?</h1>
+        <p class="lede">We'll pick the layouts that suit you.</p>
+        <div class="choices two">
+          <label class="choice"><input type="radio" name="stage" value="recent">
+            <svg class="choice-icon"><use href="#i-grad"/></svg>
+            <b>Recent graduate</b><span>Student, or graduated in the last two years.</span></label>
+          <label class="choice"><input type="radio" name="stage" value="experienced">
+            <svg class="choice-icon"><use href="#i-case"/></svg>
+            <b>Experienced</b><span>Working professional, or switching jobs.</span></label>
+        </div>
+      </section>
 
-    <fieldset>
-      <legend>2. Where are you in your career?</legend>
-      <div class="cards" data-name="stage">
-        <label class="card"><input type="radio" name="stage" value="recent" checked><b>Student or recent graduate</b><span>Still studying, or graduated or post-graduated in the last two years.</span></label>
-        <label class="card"><input type="radio" name="stage" value="working"><b>Working, under 5 years</b><span>A few years into your career.</span></label>
-        <label class="card"><input type="radio" name="stage" value="experienced"><b>5+ years, or switching jobs</b><span>Experience first: what you built and the results.</span></label>
-      </div>
-    </fieldset>
+      <section class="step" data-step="2" aria-labelledby="s2" hidden>
+        <p class="eyebrow">Step 2 of 4</p>
+        <h1 id="s2">How would you like to start?</h1>
+        <p class="lede">You can add more by voice at any point.</p>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="buildMode" value="upload">
+            <svg class="choice-icon"><use href="#i-doc"/></svg>
+            <b>Upload my CV</b><span>PDF or Word. I'll rewrite it, keeping every fact.</span></label>
+          <label class="choice"><input type="radio" name="buildMode" value="talk">
+            <svg class="choice-icon"><use href="#i-mic"/></svg>
+            <b>Talk it through <em class="tag-ai">Voice AI</em></b><span>Tell me about your work. I'll ask one question at a time.</span></label>
+          <label class="choice"><input type="radio" name="buildMode" value="both">
+            <svg class="choice-icon"><use href="#i-both"/></svg>
+            <b>Both</b><span>Start from your CV, then fill the gaps by voice.</span></label>
+        </div>
+      </section>
 
-    <fieldset>
-      <legend>3. Which resume format?</legend>
-      <div class="cards" id="templateCards" data-name="template"></div>
-    </fieldset>
+      <section class="step" data-step="3" aria-labelledby="s3" hidden>
+        <p class="eyebrow">Step 3 of 4</p>
+        <h1 id="s3">Choose a layout</h1>
+        <p class="lede">You can switch any time; your content stays the same.</p>
+        <div class="choices layouts" id="templateCards"></div>
+      </section>
 
-    <fieldset>
-      <legend>4. How long should it be?</legend>
-      <div class="cards cards-2" data-name="pages">
-        <label class="card"><input type="radio" name="pages" value="1" checked><b>One page</b><span>Most relevant and recent work only.</span></label>
-        <label class="card"><input type="radio" name="pages" value="2"><b>Two pages</b><span>More detail, if your experience supports it. No filler.</span></label>
-      </div>
-    </fieldset>
+      <section class="step" data-step="4" aria-labelledby="s4" hidden>
+        <p class="eyebrow">Step 4 of 4</p>
+        <h1 id="s4">Two quick details</h1>
+        <div class="field">
+          <p class="field-label">Length</p>
+          <div class="segmented" role="radiogroup" aria-label="Length">
+            <label><input type="radio" name="pages" value="1" checked><span>One page</span></label>
+            <label><input type="radio" name="pages" value="2"><span>Two pages</span></label>
+          </div>
+        </div>
+        <div class="field">
+          <p class="field-label">What is it for?</p>
+          <div class="segmented" role="radiogroup" aria-label="Purpose">
+            <label><input type="radio" name="purpose" value="general" checked><span>General</span></label>
+            <label><input type="radio" name="purpose" value="role"><span>A type of role</span></label>
+            <label><input type="radio" name="purpose" value="jd"><span>A specific job</span></label>
+          </div>
+          <input type="text" id="purposeRole" class="role-input" placeholder="Which role? e.g. Product Manager" maxlength="120" hidden>
+          <p class="hint" id="purposeHint">A strong all-round resume, no single target.</p>
+        </div>
+      </section>
 
-    <fieldset>
-      <legend>5. What is this resume for?</legend>
-      <div class="cards" data-name="purpose">
-        <label class="card"><input type="radio" name="purpose" value="jd"><b>A specific job</b><span>I have the job description or a link. I'll tailor to it and tell you honestly how well you fit.</span></label>
-        <label class="card"><input type="radio" name="purpose" value="role"><b>A type of role</b><span>e.g. Product Manager, Data Analyst.</span>
-          <input type="text" id="purposeRole" class="role-input" placeholder="Which role?" maxlength="120"></label>
-        <label class="card"><input type="radio" name="purpose" value="general" checked><b>General use</b><span>A strong all-round resume, no single target.</span></label>
-      </div>
-    </fieldset>
-
-    <button id="startBtn" class="primary big">Start</button>
+      <footer class="setup-nav">
+        <button type="button" id="backBtn" class="text-btn" hidden>Back</button>
+        <span class="spacer"></span>
+        <button type="button" id="nextBtn" class="pill primary" disabled>Continue</button>
+        <button type="button" id="startBtn" class="pill primary" hidden>Start building</button>
+      </footer>
+    </div>
   </main>
 
   <!-- Workspace -->
@@ -62,32 +108,54 @@
       <button type="button" role="tab" data-tab="chat" aria-selected="true">Chat</button>
       <button type="button" role="tab" data-tab="resume" aria-selected="false">Resume <span id="resumeDot" class="dot" hidden aria-label="updated"></span></button>
     </nav>
+
     <section class="chat" aria-label="Conversation">
       <header class="chat-head">
-        <b>Resume Builder</b>
+        <div class="brand small"><span class="logo" aria-hidden="true"></span><span class="brand-name">Resume Builder</span></div>
         <span id="profileChip" class="chip" hidden></span>
-        <button id="newBtn" class="ghost small" title="Start over">New resume</button>
+        <button id="newBtn" class="icon-btn" title="Start a new resume" aria-label="Start a new resume"><svg><use href="#i-plus"/></svg></button>
       </header>
+
       <div id="messages" class="messages" aria-live="polite"></div>
+
       <div id="uploadZone" class="upload-zone" hidden>
-        <label class="primary upload-btn">
+        <label class="pill primary upload-btn">
           <input id="fileInput" type="file" accept=".pdf,.docx,.txt,application/pdf" hidden>
           Upload your CV
         </label>
-        <span class="hint">PDF, DOCX or TXT, up to 15 MB</span>
+        <span class="hint">PDF, Word or text · up to 15 MB</span>
       </div>
+
       <div class="quick">
-        <button type="button" id="skipBtn" class="ghost small" title="Skip the current question">Skip question</button>
-        <button type="button" id="finishBtn" class="ghost small" title="Stop the interview and finalise">I'm done, finish it</button>
-        <button type="button" id="jdBtn" class="ghost small" title="Tailor the resume to a job description">Target a job</button>
+        <button type="button" id="jdBtn" class="chip-btn" title="Tailor the resume to a job description">Target a job</button>
+        <button type="button" id="skipBtn" class="chip-btn" title="Skip the current question">Skip question</button>
+        <button type="button" id="finishBtn" class="chip-btn" title="Stop the interview and finish">I'm done</button>
       </div>
+
       <div id="voiceStatus" class="voice-status" hidden></div>
-      <form id="composer" class="composer">
-        <button type="button" id="micBtn" class="mic" title="Speak" aria-pressed="false">🎤</button>
-        <textarea id="input" rows="2" placeholder="Type, or press the mic and talk…"></textarea>
-        <div class="composer-side">
-          <button type="submit" class="primary" id="sendBtn">Send</button>
-          <label class="attach" title="Upload a CV"><input id="fileInput2" type="file" accept=".pdf,.docx,.txt,application/pdf" hidden>📎</label>
+
+      <!-- One composer. Its mode changes with the moment:
+           compact (type or tap the mic), story (the AI asked; voice is the big, obvious answer),
+           recording (live level and countdown), transcribing. -->
+      <form id="composer" class="composer" data-mode="compact">
+        <div class="voice">
+          <button type="button" id="micBtn" class="mic" aria-pressed="false" aria-label="Answer with Voice AI">
+            <span class="halo" aria-hidden="true"></span>
+            <svg class="ic-mic"><use href="#i-mic"/></svg>
+            <svg class="ic-stop"><use href="#i-stop"/></svg>
+          </button>
+          <div class="voice-copy">
+            <span class="ai-pill" id="voicePill">Voice AI</span>
+            <b id="voiceTitle">Tell it by voice</b>
+            <span id="voiceSub">Hindi, English or both · up to 2 min</span>
+            <button type="button" id="typeInstead" class="text-btn">or type instead</button>
+          </div>
+          <div class="meter" id="voiceMeter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="typebar">
+          <label class="attach icon-btn" title="Upload a CV"><input id="fileInput2" type="file" accept=".pdf,.docx,.txt,application/pdf" hidden><svg><use href="#i-clip"/></svg></label>
+          <textarea id="input" rows="1" placeholder="Message"></textarea>
+          <button type="submit" class="send" id="sendBtn" aria-label="Send"><svg><use href="#i-send"/></svg></button>
         </div>
       </form>
       <label class="speak-toggle"><input type="checkbox" id="speakToggle"> Read replies aloud</label>
@@ -95,58 +163,65 @@
 
     <section class="preview" aria-label="Resume preview">
       <div class="toolbar">
-        <select id="templateSel" aria-label="Format"></select>
-        <select id="pagesSel" aria-label="Length"><option value="1">1 page</option><option value="2">2 pages</option></select>
+        <select id="templateSel" class="select" aria-label="Layout"></select>
+        <select id="pagesSel" class="select narrow" aria-label="Length"><option value="1">1 page</option><option value="2">2 pages</option></select>
         <span class="spacer"></span>
-        <button id="undoBtn" class="ghost icon" title="Undo (Ctrl+Z)" disabled>↶</button>
-        <button id="redoBtn" class="ghost icon" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
-        <label class="toggle" title="Edit the text directly on the page"><input type="checkbox" id="editToggle"> Edit</label>
-        <button id="checksBtn" class="ghost">Checks <span id="checksCount" class="count">0</span></button>
-        <button id="pdfBtn" class="primary">PDF</button>
-        <button id="docxBtn" class="ghost">DOCX</button>
+        <button id="undoBtn" class="icon-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg><use href="#i-undo"/></svg></button>
+        <button id="redoBtn" class="icon-btn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg><use href="#i-redo"/></svg></button>
+        <label class="toggle" title="Edit the text directly on the page"><input type="checkbox" id="editToggle"><span>Edit</span></label>
+        <button id="checksBtn" class="pill quiet">Checks <span id="checksCount" class="count">0</span></button>
+        <div class="menu-wrap">
+          <button id="downloadBtn" class="pill primary" aria-haspopup="menu" aria-expanded="false"><svg><use href="#i-down"/></svg>Download</button>
+          <div id="downloadMenu" class="menu" role="menu" hidden>
+            <button id="pdfBtn" role="menuitem"><b>PDF</b><span>Best for applying</span></button>
+            <button id="docxBtn" role="menuitem"><b>Word</b><span>Editable .docx</span></button>
+          </div>
+        </div>
       </div>
       <div id="checksPanel" class="checks" hidden></div>
-      <!-- One collapsed line; the resume keeps the screen. -->
       <details id="insights" class="insights" hidden>
         <summary id="insightsSummary"><span id="fitBadge" class="badge" hidden></span><span id="insightChips"></span></summary>
         <div class="insights-body">
           <div id="assessBar" class="assess" hidden></div>
           <div id="jdBar" class="jd-bar" hidden>
             <span id="jdText"></span>
-            <button type="button" id="jdRemove" class="ghost small">Remove job</button>
+            <button type="button" id="jdRemove" class="text-btn">Remove job</button>
           </div>
           <div id="evidenceBox" class="evidence" hidden></div>
           <div id="hiddenNote" class="hidden-note" hidden></div>
         </div>
       </details>
       <div class="stage" id="stage">
-        <div id="empty" class="empty">Your resume will appear here as soon as there's enough for a first draft.</div>
+        <div id="empty" class="empty">
+          <div class="empty-sheet" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+          <p>Your resume appears here as soon as there's enough for a first draft.</p>
+        </div>
         <div id="paper" class="paper" hidden>
           <iframe id="frame" title="Resume preview"></iframe>
         </div>
       </div>
-      <p class="spec-note">Formats are the product's design templates, not official institutional templates.</p>
+      <p class="spec-note">Layouts are this product's designs, not official institutional templates.</p>
     </section>
   </div>
 
-  <dialog id="jdDialog" class="jd-dialog">
+  <dialog id="jdDialog" class="sheet-dialog">
     <form id="jdForm" method="dialog">
       <h2>Tailor to a job</h2>
-      <p class="hint">Give me the job description. I'll reorder and reword your real experience to match, and ask about anything the job wants that I can't find. I won't add skills or results you don't have.</p>
+      <p class="hint">I'll reorder and reword your real experience to match, and ask about anything the job wants that I can't find. I won't add skills or results you don't have.</p>
       <label>Job link
         <input id="jdUrl" type="url" placeholder="https://careers.example.com/jobs/123" autocomplete="off">
       </label>
-      <p class="hint">Company career pages and most job boards work. LinkedIn usually needs a login, so paste the text or upload a PDF instead.</p>
-      <label>Or upload the JD (PDF, DOCX, TXT)
+      <p class="hint">Career pages and most job boards work. LinkedIn usually needs a login, so paste the text instead.</p>
+      <label>Or upload the job description
         <input id="jdFile" type="file" accept=".pdf,.docx,.txt,application/pdf">
       </label>
-      <label>Or paste the text
+      <label>Or paste it
         <textarea id="jdTextIn" rows="6" placeholder="Paste the full job description"></textarea>
       </label>
       <p id="jdError" class="error-text" hidden></p>
       <div class="dialog-actions">
-        <button type="button" id="jdCancel" class="ghost">Cancel</button>
-        <button type="submit" id="jdSubmit" class="primary">Tailor my resume</button>
+        <button type="button" id="jdCancel" class="pill quiet">Cancel</button>
+        <button type="submit" id="jdSubmit" class="pill primary">Tailor my resume</button>
       </div>
     </form>
   </dialog>
