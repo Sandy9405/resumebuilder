@@ -131,8 +131,19 @@ function findItemIndex(sec, id) {
 export class OpError extends Error {}
 
 /** Sort sections by the template's preferred order, keeping relative order of equal kinds. */
-export function orderForTemplate(sections, templateId) {
-  const order = getTemplate(templateId).sectionOrder;
+/** Working professionals: experience comes before education in every format. */
+export function isProfessional(resume) {
+  return ['working', 'experienced'].includes(resume?.settings?.stage) || ['mid', 'experienced', 'senior'].includes(resume?.profile?.careerStage);
+}
+
+export function orderForTemplate(sections, templateId, professional = false) {
+  let order = getTemplate(templateId).sectionOrder;
+  if (professional && order.indexOf('education') < order.indexOf('experience')) {
+    // Academic formats lead with education; for people already working, what
+    // they built reads first. Education moves to just before skills.
+    order = order.filter((k) => k !== 'education');
+    order.splice(order.indexOf('skills') >= 0 ? order.indexOf('skills') : order.length, 0, 'education');
+  }
   return sections
     .map((s, i) => [s, i])
     .sort(([a, ia], [b, ib]) => order.indexOf(a.kind) - order.indexOf(b.kind) || ia - ib)
@@ -166,6 +177,7 @@ export function applyOp(resume, name, input) {
           }),
         })),
         resume.settings.template,
+        isProfessional(resume),
       );
       return `Created draft with ${resume.sections.length} sections`;
     }
@@ -218,7 +230,9 @@ export function applyOp(resume, name, input) {
       return `Removed "${gone.org || gone.heading}" from ${sec.title}`;
     }
     case 'set_profile': {
+      const wasPro = isProfessional(resume);
       resume.profile = cleanProfile(input);
+      if (isProfessional(resume) !== wasPro) resume.sections = orderForTemplate(resume.sections, resume.settings.template, isProfessional(resume));
       const p = resume.profile;
       return `Profile: ${[p.jobFamilies.join(' / '), p.careerStage, p.targetRole && `target ${p.targetRole}`].filter(Boolean).join(', ')}`;
     }
@@ -290,7 +304,7 @@ export function applyOp(resume, name, input) {
       if (input.template && TEMPLATES[input.template]) resume.settings.template = input.template;
       if (input.pages === 1 || input.pages === 2) resume.settings.pages = input.pages;
       if (before !== resume.settings.template) {
-        resume.sections = orderForTemplate(resume.sections, resume.settings.template);
+        resume.sections = orderForTemplate(resume.sections, resume.settings.template, isProfessional(resume));
       }
       return `Format: ${getTemplate(resume.settings.template).label}, ${resume.settings.pages} page(s)`;
     }

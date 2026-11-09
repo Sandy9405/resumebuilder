@@ -10,6 +10,7 @@ import { applyOp, OpError, snapshot, pushHistory } from './ops.js';
 import { validate } from './validate.js';
 import { lintResume } from '../shared/lint.js';
 import { jdCoverage, jdIssues } from '../shared/jd.js';
+import { compareIssues, comparison } from '../shared/compare.js';
 import { measureLayout, describeFit } from './layout.js';
 import { getTemplate } from '../shared/templates.js';
 
@@ -73,13 +74,22 @@ function coverageLine(r) {
 
 /** Content checks + visual QA, condensed for the model. */
 export function qaSummary(session) {
-  const content = [...lintResume(session.resume, session.sourceText), ...jdIssues(session.resume).filter((i) => i.code === 'jd-missing')];
+  // "Do no harm" findings first: lost facts, deleted positioning, low-value filler.
+  const content = [
+    ...compareIssues(session.resume, session.cvText),
+    ...lintResume(session.resume, session.sourceText),
+    ...jdIssues(session.resume).filter((i) => i.code === 'jd-missing' || i.code === 'jd-ask'),
+  ];
   const visual = session.layout?.issues || [];
   const all = [...visual.filter((i) => i.level === 'error'), ...content, ...visual.filter((i) => i.level !== 'error')];
   const lines = all.slice(0, 15).map((i) => `- [${i.code}] ${i.message}${i.path ? ` (at ${i.path})` : ''}`);
   if (all.length > 15) lines.push(`- ...and ${all.length - 15} more`);
   const job = session.resume.target ? `\nJob match: ${coverageLine(session.resume)}` : '';
-  return `Layout: ${describeFit(session.layout)}${job}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
+  const cmp = comparison(session.resume, session.cvText);
+  const vs = cmp
+    ? `\nCompared with the uploaded CV: facts kept ${cmp.facts.kept}/${cmp.facts.total}${cmp.keywords ? `; job keywords ${cmp.keywords.before} -> ${cmp.keywords.after} of ${cmp.keywords.total}` : ''}. The result must be better than the original on fit and evidence, never worse.`
+    : '';
+  return `Layout: ${describeFit(session.layout)}${job}${vs}\nChecks:${lines.length ? `\n${lines.join('\n')}` : ' none.'}`;
 }
 
 const textOf = (content) =>

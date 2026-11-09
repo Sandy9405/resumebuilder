@@ -56,9 +56,9 @@ const NUMBER_WORDS = {
   first: 1, second: 2, third: 3, fourth: 4, fifth: 5, double: 2, twice: 2, half: 50,
 };
 
-const NUM_RE = /\d+(?:[.,]\d+)*/g;
+export const NUM_RE = /\d+(?:[.,]\d+)*/g;
 
-function normNum(s) {
+export function normNum(s) {
   // "1,20,000" and "120,000" -> "120000"; "1.50" -> "1.5"; "07" -> "7"
   let n = s.replace(/,/g, '');
   if (n.includes('.')) n = n.replace(/0+$/, '').replace(/\.$/, '');

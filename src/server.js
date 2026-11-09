@@ -8,6 +8,7 @@ import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, 
 import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
 import { jdIssues, jdCoverage } from '../shared/jd.js';
+import { compareIssues, comparison } from '../shared/compare.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
 import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
@@ -32,7 +33,8 @@ function view(s) {
     resume: s.resume,
     layout: s.layout,
     // Content, ATS and job-match checks; visual QA lives in layout (the browser recomputes it live).
-    issues: [...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
+    issues: [...compareIssues(s.resume, s.cvText), ...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
+    compare: s.resume.sections.length ? comparison(s.resume, s.cvText) : null,
     jd: s.jd ? { source: s.jd.source, title: s.jd.title, company: s.jd.company, chars: s.jd.text.length } : null,
     coverage: jdCoverage(s.resume),
     // Measured before/after quality, when the user uploaded a CV.
@@ -129,6 +131,7 @@ export function createApp({ client } = {}) {
       pendingNotes: [],
       jd: null,
       baseline: null,
+      cvText: '',
       busy: false,
       touched: Date.now(),
     };
@@ -167,7 +170,10 @@ export function createApp({ client } = {}) {
         ? { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } }
         : { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
     req.s.sourceText += `\n${text}\n${links.join('\n')}\n${note}`;
-    if (text.trim()) req.s.baseline = cvTextCounts(text);
+    if (text.trim()) {
+      req.s.baseline = cvTextCounts(text);
+      req.s.cvText = `${req.s.cvText}\n${text}`.trim();
+    }
     const lowText = text.replace(/\s/g, '').length < 200;
     const prompt =
       `I've uploaded my current CV (${name}).` +

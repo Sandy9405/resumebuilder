@@ -153,6 +153,19 @@ The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
   - Every block is painted in a single pass, so headings are no longer written to the PDF before the body text.
 - Content checks flag non-standard section headings, missing email or phone, two-digit years and mixed date formats.
 
+## Do no harm: the result must beat the original
+
+This came from a real test. For a "Product Manager – Applied AI" job description, a 10-year professional's original CV scored 6/10 and the app's version scored 5/10. Root causes, and the fix for each:
+
+| Root cause | Fix |
+|---|---|
+| Academic format put education first for an experienced person | Section order depends on career stage: working professionals get experience before education in every format |
+| The profile was deleted instead of rewritten for the target | Prompt: keep and rewrite the profile, and aim the sub-header at the target in true terms. Checks: `summary-dropped`, `headline-untargeted` |
+| Compression dropped facts ("headcount 5 to 1", "900-line"), and nothing noticed | `fact-dropped`: every number in the uploaded CV must stay on the page or in reserve |
+| The one-page fill rule added a Hobbies section to a senior resume | Fill is stage-aware: professionals get their own dropped material back first. `low-value-section` flags hobbies and school results for professionals |
+| No real tailoring: product evidence was framed as operations, and the job's core asks were never raised | Prompt: translate evidence into the target role's terms, ask about every unconfirmed required keyword before finishing, plus an Applied-AI question set |
+| No comparison with the input | A "Compared with your original" panel (facts kept, job keywords before → after) and the same numbers in the agent's feedback |
+
 ## Honest verdicts
 
 - **Purpose.** Setup asks what the resume is for: a specific job (opens the job description dialog), a type of role (named), or general use. If it's still unknown, the agent asks once and records the answer with `set_purpose`. A general resume gets no fit assessment.

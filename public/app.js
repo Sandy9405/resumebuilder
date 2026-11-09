@@ -369,6 +369,13 @@ function renderAssessment() {
         `<span>${escapeHtml(a.cv.summary)}</span>${moved.length ? `<span class="muted">Measured: ${escapeHtml(moved.join(' · '))}</span>` : ''}</div>`,
     );
   }
+  const cmp = S.compare;
+  if (cmp?.facts) {
+    const bits = [`Facts kept ${cmp.facts.kept}/${cmp.facts.total}${cmp.facts.dropped.length ? ` (missing: ${cmp.facts.dropped.slice(0, 5).join(', ')})` : ''}`];
+    if (cmp.keywords) bits.push(`job keywords ${cmp.keywords.before} → ${cmp.keywords.after} of ${cmp.keywords.total}`);
+    const worse = cmp.facts.dropped.length > 0 || (cmp.keywords && cmp.keywords.after < cmp.keywords.before);
+    parts.push(`<div class="row"><span class="tag ${worse ? 'weak' : 'good'}">Compared with your original</span><span>${escapeHtml(bits.join(' · '))}</span></div>`);
+  }
   if (a.fit) {
     const f = a.fit;
     const weak = f.level === 'weak' || f.level === 'very_weak';
@@ -385,6 +392,7 @@ function renderAssessment() {
     );
   }
   $('#assessBar').hidden = !parts.length;
+  // (comparison row is shown even before an assessment exists)
   $('#assessBar').innerHTML = parts.join('');
   $('#applyAnyway')?.addEventListener('click', applyAnywayClick);
 }
@@ -540,7 +548,7 @@ const label = (c) =>
     'over-limit': 'Too long', 'outside-boundary': 'Outside margins', overlap: 'Overlap', 'date-collision': 'Date collision',
     'date-misaligned': 'Date alignment', 'indent-inconsistent': 'Indentation', 'orphan-heading': 'Page break',
     'blank-page': 'Blank page', 'table-overflow': 'Table', justified: 'Word spacing', 'font-fallback': 'Font',
-    underfilled: 'Page not full', 'header-incomplete': 'Header', 'links-missing': 'Links',
+    underfilled: 'Page not full', 'fact-dropped': 'Fact lost', 'summary-dropped': 'Profile removed', 'headline-untargeted': 'Positioning', 'low-value-section': 'Low-value section', 'header-incomplete': 'Header', 'links-missing': 'Links',
     'ste-length': 'Too long', 'ste-passive': 'Passive voice', 'ste-pattern': 'Repetitive shape', 'ste-punctuation': 'Punctuation',
     'jd-missing': 'Job keyword', 'jd-ask': 'Job question', 'jd-gap': 'Job gap',
     'ats-heading': 'ATS heading', 'ats-dates': 'ATS dates',
