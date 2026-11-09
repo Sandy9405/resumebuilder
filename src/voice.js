@@ -32,12 +32,16 @@ export function voiceTerms(session) {
   const r = session.resume || {};
   const out = [];
   const seen = new Set();
+  // Sarvam rejects (400) any term containing a comma or semicolon, so
+  // "Acme Logistics, Pune" is sent as two terms: "Acme Logistics" and "Pune".
   const add = (t) => {
-    const term = String(t || '').trim();
-    const key = term.toLowerCase();
-    if (!term || term.length > MAX_TERM_CHARS || seen.has(key) || out.length >= MAX_TERMS) return;
-    seen.add(key);
-    out.push(term);
+    for (const part of String(t || '').split(/[,;]/)) {
+      const term = part.trim();
+      const key = term.toLowerCase();
+      if (!term || term.length > MAX_TERM_CHARS || seen.has(key) || out.length >= MAX_TERMS) continue;
+      seen.add(key);
+      out.push(term);
+    }
   };
   for (const s of r.sections || []) for (const it of s.items || []) add(it.org);
   add(r.target?.company);
@@ -48,19 +52,34 @@ export function voiceTerms(session) {
 
 export class VoiceError extends Error {}
 
+const sarvamMessage = (err) => err?.body?.error?.message || err?.message || '';
+
+async function request(buffer, mimetype, terms) {
+  const r = await getClient().speechToText.transcribe({
+    file: new Blob([buffer], { type: mimetype || 'audio/webm' }),
+    model: process.env.SARVAM_STT_MODEL || 'saaras:v4',
+    language_code: process.env.SARVAM_STT_LANGUAGE || 'unknown',
+    mode: process.env.SARVAM_STT_MODE || 'codemix',
+    ...(terms.length ? { keyterms: terms } : {}),
+  });
+  return { transcript: (r.transcript || '').trim(), language: r.language_code || null };
+}
+
 /** @returns {Promise<{ transcript: string, language: string | null }>} */
 export async function transcribe(buffer, mimetype, terms = []) {
   try {
-    const r = await getClient().speechToText.transcribe({
-      file: new Blob([buffer], { type: mimetype || 'audio/webm' }),
-      model: process.env.SARVAM_STT_MODEL || 'saaras:v4',
-      language_code: process.env.SARVAM_STT_LANGUAGE || 'unknown',
-      mode: process.env.SARVAM_STT_MODE || 'codemix',
-      ...(terms.length ? { keyterms: terms } : {}),
-    });
-    return { transcript: (r.transcript || '').trim(), language: r.language_code || null };
+    try {
+      return await request(buffer, mimetype, terms);
+    } catch (err) {
+      // Key terms only help spelling. If Sarvam rejects the request (400) while
+      // they were sent, retry once without them rather than lose the answer.
+      if (!(err instanceof SarvamAIError) || err.statusCode !== 400 || !terms.length) throw err;
+      console.warn(`Sarvam STT 400 with key terms, retrying without them: ${sarvamMessage(err)}`);
+      return await request(buffer, mimetype, []);
+    }
   } catch (err) {
     if (err instanceof SarvamAIError) {
+      console.warn(`Sarvam STT ${err.statusCode}: ${sarvamMessage(err)}`);
       throw new VoiceError(
         err.statusCode === 401 || err.statusCode === 403
           ? 'Voice transcription is not authorised. Check the Sarvam API key.'
