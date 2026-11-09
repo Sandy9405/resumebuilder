@@ -246,7 +246,7 @@ export async function renderDocx(resume) {
     if (sec.kind === 'skills') {
       items.forEach((it, i) => {
         const body = it.detail || (it.bullets || []).join(', ');
-        const runs = [...(it.heading ? [run(`${it.heading}: `, { bold: true })] : []), run(body)];
+        const runs = [...(it.heading ? [run(`${it.heading}: `, { bold: true })] : []), ...richRuns(body)];
         const before = sp(i === 0 ? t.spacingPt.headingAfter : t.spacingPt.bullet);
         children.push(t.skills === 'bullets' ? para(runs, { numbering: statementNumbering, keepLines: true, spacing: { before } }) : para(runs, { spacing: { before } }));
       });
@@ -256,7 +256,7 @@ export async function renderDocx(resume) {
     if (sec.kind === 'summary') {
       items.forEach((it, i) => {
         if (it.detail) children.push(para(richRuns(it.detail), { spacing: { before: sp(i === 0 ? t.spacingPt.headingAfter : t.spacingPt.entry) } }));
-        for (const b of it.bullets || []) children.push(bulletPara(b, sp(t.spacingPt.bullet)));
+        for (const b of it.bullets || []) children.push(para(richRuns(b), { spacing: { before: sp(t.spacingPt.bullet) } }));
       });
       continue;
     }
@@ -267,7 +267,7 @@ export async function renderDocx(resume) {
       const statement = !it.org && !bullets.length && !it.detail;
       const loc = it.location ? [run(`, ${it.location}`)] : [];
       if (statement) {
-        children.push(splitRow([run(it.heading), ...loc], it.dates, { before, keepNext: false, numbering: statementNumbering }));
+        children.push(splitRow([...richRuns(it.heading), ...loc], it.dates, { before, keepNext: false, numbering: statementNumbering }));
         return;
       }
       let left;
@@ -295,12 +295,12 @@ export async function renderDocx(resume) {
       children.push(splitRow(left, it.dates, { before, keepNext: true, numbering: t.entry.marker ? { reference: 'entry', level: 0 } : null }));
       const textIndent = t.entry.marker ? { left: tw(ind.entryText) } : undefined;
       if (line2) children.push(para([line2], { keepNext: true, keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: textIndent }));
-      if (it.detail) children.push(para([run(it.detail, { italics: t.id === 'iitb', color: t.entry.style === 'pro' ? MUTED : undefined })], { keepNext: bullets.length > 0 || !!it.note, keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: textIndent }));
+      if (it.detail) children.push(para(richRuns(it.detail, { italics: t.id === 'iitb', color: t.entry.style === 'pro' ? MUTED : undefined }), { keepNext: bullets.length > 0 || !!it.note, keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: textIndent }));
       bullets.forEach((b, i) =>
         children.push(bulletPara(b, sp(i === 0 ? t.spacingPt.line2 : t.spacingPt.bullet), (bullets.length >= 3 && i === bullets.length - 2) || (!!it.note && i === bullets.length - 1))),
       );
       // Recognition line under a role, or an education distinction.
-      if (it.note) children.push(para([run(it.note, { italics: true, color: MUTED })], { keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: { left: tw(ind.bulletText) } }));
+      if (it.note) children.push(para(richRuns(it.note, { italics: true, color: MUTED }), { keepLines: true, spacing: { before: sp(t.spacingPt.line2) }, indent: { left: tw(ind.bulletText) } }));
     });
   }
 

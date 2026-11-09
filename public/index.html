@@ -97,7 +97,6 @@
       <div class="toolbar">
         <select id="templateSel" aria-label="Format"></select>
         <select id="pagesSel" aria-label="Length"><option value="1">1 page</option><option value="2">2 pages</option></select>
-        <span id="fitBadge" class="badge" hidden></span>
         <span class="spacer"></span>
         <button id="undoBtn" class="ghost icon" title="Undo (Ctrl+Z)" disabled>↶</button>
         <button id="redoBtn" class="ghost icon" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
@@ -107,13 +106,19 @@
         <button id="docxBtn" class="ghost">DOCX</button>
       </div>
       <div id="checksPanel" class="checks" hidden></div>
-      <div id="assessBar" class="assess" hidden></div>
-      <div id="jdBar" class="jd-bar" hidden>
-        <span id="jdText"></span>
-        <button type="button" id="jdRemove" class="ghost small">Remove job</button>
-      </div>
-      <div id="evidenceBox" class="evidence" hidden></div>
-      <div id="hiddenNote" class="hidden-note" hidden></div>
+      <!-- One collapsed line; the resume keeps the screen. -->
+      <details id="insights" class="insights" hidden>
+        <summary id="insightsSummary"><span id="fitBadge" class="badge" hidden></span><span id="insightChips"></span></summary>
+        <div class="insights-body">
+          <div id="assessBar" class="assess" hidden></div>
+          <div id="jdBar" class="jd-bar" hidden>
+            <span id="jdText"></span>
+            <button type="button" id="jdRemove" class="ghost small">Remove job</button>
+          </div>
+          <div id="evidenceBox" class="evidence" hidden></div>
+          <div id="hiddenNote" class="hidden-note" hidden></div>
+        </div>
+      </details>
       <div class="stage" id="stage">
         <div id="empty" class="empty">Your resume will appear here as soon as there's enough for a first draft.</div>
         <div id="paper" class="paper" hidden>

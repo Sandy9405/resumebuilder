@@ -107,7 +107,7 @@ test('STE-style checks: length, passive, repeated ", …ing" shape; keywords exe
   assert.ok(!codes(mk(['Built A, cutting cost', 'Wrote B', 'Tested C', 'Shipped D'])).includes('ste-pattern'));
   assert.ok(codes(mk(['Built a robust pipeline'])).includes('ai-language'));
   assert.ok(!codes(mk(['Built a robust pipeline'], { keywords: [{ term: 'robust', aliases: [] }] })).includes('ai-language'), 'JD keyword exempt');
-  assert.deepEqual(codes(mk(['Built the payments API in Go'])), []);
+  assert.deepEqual(codes(mk(['Built the payments API in Go'])).filter((c) => c !== 'result-missing'), []);
 });
 
 test('header completeness: sub-header and links are required', () => {

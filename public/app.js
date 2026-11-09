@@ -98,6 +98,64 @@ function addBubble(role, text, changes) {
 function renderChat() {
   $('#messages').innerHTML = '';
   for (const m of S.chat) addBubble(m.role, m.text, m.changes);
+  const bubbles = $('#messages').querySelectorAll('.msg.assistant');
+  const last = bubbles[bubbles.length - 1];
+  if (!last || busy) return;
+  const lastMsg = S.chat[S.chat.length - 1];
+  // On phones, offer a jump to the change that reply made.
+  if (lastMsg?.role === 'assistant' && lastMsg.changes?.length && isPhone()) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ghost see-change';
+    b.textContent = 'See it on your resume';
+    b.addEventListener('click', () => {
+      const keys = pendingFlash.length ? pendingFlash : changedKeysFromLastTurn();
+      showTab('resume');
+      setTimeout(() => flashChanges(keys), 250);
+    });
+    last.appendChild(b);
+  }
+  const ask = S.ask;
+  if (!ask || lastMsg?.role !== 'assistant') return;
+  const wrap = document.createElement('div');
+  wrap.className = 'quick-replies';
+  const btn = (label, cls, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `ghost ${cls}`;
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    wrap.appendChild(b);
+  };
+  const prefill = (text) => {
+    if (isPhone()) showTab('chat');
+    $('#input').value = text;
+    $('#input').focus();
+  };
+  if (ask.kind === 'currency') {
+    btn('Yes, still my current job', 'yes', confirmCurrent);
+    btn("I've moved on", '', () => prefill(`I've moved on. My current role is `));
+  } else if (ask.kind === 'evidence') {
+    btn('I have a story', 'yes', () => prefill(`About ${ask.term}: `));
+    btn("Skip, I don't have this", '', () => skipRequirement(ask.term));
+  }
+  last.appendChild(wrap);
+  $('#messages').scrollTop = $('#messages').scrollHeight; // keep the answer buttons in view
+}
+
+let lastTurnKeys = [];
+const changedKeysFromLastTurn = () => lastTurnKeys;
+
+async function confirmCurrent() {
+  if (busy) return;
+  addBubble('user', 'Yes, still my current job');
+  setBusy(true);
+  try {
+    applyView(await api(`/api/sessions/${S.id}/current`, { method: 'POST' }), true);
+  } catch (err) {
+    setBusy(false);
+    addBubble('error', err.message);
+  }
 }
 
 function setBusy(on, label = 'Working on it…') {
@@ -278,8 +336,22 @@ function speak(text) {
 }
 
 // ---------- Preview ----------
+let pendingFlash = [];
+function changedItems(before, after) {
+  const old = new Map();
+  for (const s of before?.sections || []) for (const it of s.items || []) old.set(`${s.id}.${it.id}`, JSON.stringify(it));
+  const out = [];
+  for (const s of after?.sections || []) for (const it of s.items || []) {
+    const k = `${s.id}.${it.id}`;
+    if (old.get(k) !== JSON.stringify(it)) out.push(k);
+  }
+  if (JSON.stringify(before?.header) !== JSON.stringify(after?.header)) out.unshift('header');
+  return out;
+}
+
 function applyView(v, fromTurn = false) {
   const changed = JSON.stringify(v.resume) !== JSON.stringify(S?.resume);
+  if (changed && S?.resume?.sections?.length) lastTurnKeys = pendingFlash = changedItems(S.resume, v.resume);
   S = { ...S, ...v };
   if (fromTurn) setBusy(false);
   render();
@@ -300,6 +372,7 @@ function render() {
   renderEvidence();
   renderAssessment();
   renderHiddenNote();
+  renderInsights();
   renderPreview();
   renderChecks();
 }
@@ -352,7 +425,7 @@ function renderEvidence() {
   const done = kws.filter((k) => shown.has(k.term) || k.status === 'skipped' || k.evidence === 'no').length;
   // Open by default on desktop; collapsed on phones, where panels compete with the page.
   const prev = box.querySelector('details');
-  const open = prev ? prev.open : !isPhone();
+  const open = prev ? prev.open : true;
   box.innerHTML = `<details${open ? ' open' : ''}><summary>What this job requires (${done} of ${kws.length} covered)</summary><ul>${rows.join('')}</ul></details>`;
   box.querySelectorAll('[data-story]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -468,6 +541,29 @@ async function applyAnywayClick() {
   }
 }
 
+function renderInsights() {
+  const a = S.resume.assessment || {};
+  const chips = [];
+  const chip = (text, cls = '') => chips.push(`<span class="chip-s ${cls}">${escapeHtml(text)}</span>`);
+  if (a.cv) chip(a.cv.verdict === 'already_strong' ? 'Your CV was already strong' : 'Improving your CV', 'good');
+  if (a.fit) chip(`${FIT_LABEL[a.fit.level]}${a.fit.override ? ' · applying anyway' : ''}`, a.fit.level === 'strong' || a.fit.level === 'good' ? 'good' : a.fit.level === 'weak' ? 'warn' : 'bad');
+  const req = (S.resume.target?.keywords || []).filter((k) => k.importance === 'must');
+  if (req.length) {
+    const shown = new Set(S.coverage?.matched || []);
+    const covered = req.filter((k) => shown.has(k.term) || k.status === 'skipped' || k.evidence === 'no').length;
+    chip(`Requirements ${covered}/${req.length}`, covered === req.length ? 'good' : 'warn');
+  }
+  if (S.compare?.facts) chip(`Facts kept ${S.compare.facts.kept}/${S.compare.facts.total}`, S.compare.facts.dropped.length ? 'bad' : 'good');
+  // The status row is always there once a draft exists (it carries the page badge);
+  // it only expands when there are details to show.
+  const anyPanel = ['#assessBar', '#jdBar', '#evidenceBox', '#hiddenNote'].some((id) => !$(id).hidden);
+  const hasDraft = S.resume.sections.some((x) => !x.hidden && x.items.some((i) => !i.hidden));
+  $('#insights').hidden = !hasDraft;
+  $('#insights').classList.toggle('nodetails', !anyPanel);
+  if (!anyPanel) $('#insights').open = false;
+  $('#insightChips').innerHTML = `${chips.join('')}${anyPanel ? '<span class="muted">Details</span>' : ''}`;
+}
+
 function renderHiddenNote() {
   const hidden = [];
   let reserved = 0;
@@ -509,10 +605,33 @@ function renderPreview() {
     frame.style.height = `${win.document.documentElement.scrollHeight}px`;
     if (editable) wireEditing(win.document);
     fitScale();
+    flashChanges();
     renderBadge();
     renderChecks();
   };
   frame.srcdoc = renderResume(r, { editable, screen: true });
+}
+
+// Show the user where the last change landed: scroll there and highlight it.
+function flashChanges(keys = pendingFlash) {
+  if (!keys.length || $('#paper').hidden) return;
+  const doc = $('#frame').contentDocument;
+  if (!doc) return;
+  if (!doc.getElementById('flash-style')) {
+    const st = doc.createElement('style');
+    st.id = 'flash-style';
+    st.textContent = '.flash{background:#fff1a8 !important;box-shadow:0 0 0 3px #fff1a8;transition:background 1.2s,box-shadow 1.2s}';
+    doc.head.appendChild(st);
+  }
+  const els = keys.flatMap((k) => [...doc.querySelectorAll(k === 'header' ? '.hd' : `[data-item="${CSS.escape(k)}"]`)]);
+  if (!els.length) return;
+  els.forEach((el) => el.classList.add('flash'));
+  setTimeout(() => els.forEach((el) => el.classList.remove('flash')), 2600);
+  const stage = $('#stage');
+  const scale = $('#frame').getBoundingClientRect().width / $('#frame').offsetWidth || 1;
+  const top = els[0].getBoundingClientRect().top * scale + $('#paper').offsetTop;
+  stage.scrollTo({ top: Math.max(0, top - 60), behavior: 'smooth' });
+  pendingFlash = [];
 }
 
 function renderBadge() {
@@ -698,6 +817,9 @@ async function boot() {
     history(e.shiftKey ? 'redo' : 'undo');
   });
   document.querySelectorAll('.mobile-tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  $('#insightsSummary').addEventListener('click', (e) => {
+    if ($('#insights').classList.contains('nodetails')) e.preventDefault();
+  });
   showTab('chat');
   $('#jdBtn').addEventListener('click', () => openJdDialog());
   $('#jdCancel').addEventListener('click', () => $('#jdDialog').close());

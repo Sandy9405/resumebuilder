@@ -11,6 +11,7 @@ import { validate } from './validate.js';
 import { lintResume } from '../shared/lint.js';
 import { jdCoverage, jdIssues, evidenceRequests } from '../shared/jd.js';
 import { compareIssues, comparison } from '../shared/compare.js';
+import { nextAsk, askInstruction } from './ask.js';
 import { measureLayout, describeFit } from './layout.js';
 import { getTemplate } from '../shared/templates.js';
 
@@ -44,7 +45,8 @@ function stateBlock(session) {
     `Career stage (user's own answer): ${{ recent: 'student or recent graduate (last two years)', working: 'working, under 5 years', experienced: '5+ years of experience, or switching jobs' }[r.settings.stage] || 'not asked'}.`,
     `Purpose: ${purposeLine(r.settings.purpose)}`,
     `Assessment: ${JSON.stringify(r.assessment || {})}`,
-    `Evidence request: ${evidenceLine(r)}`,
+    `Ask next: ${askInstruction(nextAsk(session))}`,
+    `Evidence requests: ${evidenceLine(r)}`,
     `Profile: ${JSON.stringify(r.profile)}`,
     `Target job: ${r.target ? `${JSON.stringify({ title: r.target.title, company: r.target.company, seniority: r.target.seniority })}. ${coverageLine(r)}` : session.jd ? 'a job description was provided but set_target_job has not been called yet.' : 'none (general resume).'}`,
     JSON.stringify({ header: r.header, sections: r.sections }),

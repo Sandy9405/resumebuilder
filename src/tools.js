@@ -208,6 +208,11 @@ export const TOOLS = [
     },
   ),
   tool(
+    'confirm_current_role',
+    'Record the answer to "is this still your current job?": still_current, or updated (they moved on and you have added or updated their current role, and ended the old one\'s dates).',
+    { status: { type: 'string', enum: ['still_current', 'updated'] } },
+  ),
+  tool(
     'mark_requirement',
     'Record the user\'s answer to an evidence request for one job requirement: has_evidence (they gave a story or proof, which you have written into the resume) or no_evidence (they said they have none, or asked to skip). A no_evidence requirement is never asked about again.',
     { term: { type: 'string', description: 'The requirement exactly as recorded with set_target_job.' }, outcome: { type: 'string', enum: ['has_evidence', 'no_evidence'] } },

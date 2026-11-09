@@ -9,6 +9,7 @@ import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
 import { jdIssues, jdCoverage, evidenceRequests } from '../shared/jd.js';
 import { compareIssues, comparison } from '../shared/compare.js';
+import { nextAsk } from './ask.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
 import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
@@ -38,6 +39,7 @@ function view(s) {
     jd: s.jd ? { source: s.jd.source, title: s.jd.title, company: s.jd.company, chars: s.jd.text.length } : null,
     coverage: jdCoverage(s.resume),
     evidence: s.resume.target ? evidenceRequests(s.resume) : null,
+    ask: s.resume.sections.length ? nextAsk(s) : null,
     // Measured before/after quality, when the user uploaded a CV.
     quality: s.baseline && s.resume.sections.length ? { before: s.baseline, after: resumeCounts(s.resume) } : null,
     chat: s.chat,
@@ -227,6 +229,15 @@ export function createApp({ client } = {}) {
       [{ type: 'text', text: `(App note: the user pressed "I don't have this" for "${term}"; it is already recorded as no_evidence.) I don't have anything for ${term}. Skip it.` }],
       `I don't have this: ${term}`,
     );
+  });
+
+  // "Yes, still my current job": recorded before the model runs.
+  app.post('/api/sessions/:id/current', getSession, async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const before = snapshot(req.s.resume);
+    applyOp(req.s.resume, 'confirm_current_role', { status: 'still_current' });
+    pushHistory(req.s, before);
+    await turn(req, res, [{ type: 'text', text: '(App note: the user confirmed their latest role is still current.) Yes, that is still my current job.' }], 'Yes, still my current job');
   });
 
   // The user chose to apply despite a weak fit: tailor honestly anyway.

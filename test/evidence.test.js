@@ -76,3 +76,10 @@ test('server: "I don\'t have this" records the skip before the model runs', asyn
     app.close();
   }
 });
+
+test('a requirement already shown on the resume is never asked about', () => {
+  const r = emptyResume({});
+  applyOp(r, 'set_target_job', job([kw('prompts'), kw('user testing')]));
+  r.sections = [{ id: 's', kind: 'experience', title: 'Experience', hidden: false, items: [{ id: 'i', heading: 'Founder', org: 'Wysa', bullets: ['Wrote and iterated the prompts behind Jarvis'], hidden: false }] }];
+  assert.equal(evidenceRequests(r).next.term, 'user testing');
+});
