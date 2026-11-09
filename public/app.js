@@ -360,6 +360,8 @@ function updateComposer() {
   if (recState || rec || transcribing) return;
   const last = S?.chat?.[S.chat.length - 1];
   const asked = last?.role === 'assistant' && (S.ask || /\?\s*$/.test(last.text || ''));
+  // While the next step is uploading a CV, voice is not the main answer.
+  if (!$('#uploadZone').hidden) return setComposerMode('compact');
   const canVoice = !$('#micBtn').disabled;
   setComposerMode(!busy && asked && canVoice && !typedOverride ? 'story' : 'compact');
 }

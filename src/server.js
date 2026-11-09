@@ -9,7 +9,7 @@ import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
 import { jdIssues, jdCoverage, evidenceRequests } from '../shared/jd.js';
 import { compareIssues, comparison } from '../shared/compare.js';
-import { nextAsk } from './ask.js';
+import { nextAsk, awaitingCv } from './ask.js';
 import { transcribe, voiceProvider, voiceTerms, VoiceError, setVoiceClient, MAX_CLIP_BYTES } from './voice.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
 import { ExtractError, extractDocument } from './extract.js';
@@ -54,6 +54,8 @@ const OPENERS = {
   talk: "Let's start with where you are now. What's your current or most recent role (or your degree, if you're a student), and what does a typical week involve?",
   both: 'Upload your current CV first. Once the draft is up, you can talk me through anything missing or out of date.',
 };
+
+const OPENER_JD_UPLOAD = "Add the job link or description, then upload your current CV. I'll tailor the CV to the job and tell you honestly how well you fit.";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
@@ -124,7 +126,7 @@ export function createApp({ client, voiceClient } = {}) {
   app.post('/api/sessions', (req, res) => {
     const { template, pages, buildMode, purpose, stage } = req.body || {};
     const mode = ['upload', 'talk', 'both'].includes(buildMode) ? buildMode : 'talk';
-    const opener = OPENERS[mode];
+    const opener = purpose?.type === 'jd' && mode !== 'talk' ? OPENER_JD_UPLOAD : OPENERS[mode];
     const s = {
       id: randomUUID(),
       opener,
@@ -201,6 +203,7 @@ export function createApp({ client, voiceClient } = {}) {
     const lowText = text.replace(/\s/g, '').length < 200;
     const prompt =
       `I've uploaded my current CV (${name}).` +
+      (req.s.resume.target ? ' Tailor it to the job I gave you: fill in evidence for its keywords from this CV, assess my fit, then ask about requirements you still cannot find.' : '') +
       (links.length ? `\n(App note: links found in the file, including any hidden behind words like "LinkedIn": ${links.join(', ')}. Put the profile and portfolio links in the header.)` : '') +
       (lowText && kind === 'pdf'
         ? ' (App note: almost no text could be extracted from this PDF, so it may be scanned. Read it carefully and ask about anything unclear.)'
@@ -227,7 +230,12 @@ export function createApp({ client, voiceClient } = {}) {
     req.s.jd = job;
     const label = [job.title, job.company].filter(Boolean).join(' at ') || job.source;
     const doc = { type: 'document', title: `Job description: ${label}`, source: { type: 'text', media_type: 'text/plain', data: job.text } };
-    const ask = `I want to apply for this job (${job.source}). Tailor my resume to it: record the target job and its keywords, show my relevant experience first in the job's language where it is true, and ask me about requirements you can't find evidence for. Do not add anything I haven't told you.`;
+    const noMaterial = !req.s.resume.sections.length && !req.s.cvText.trim();
+    const ask = awaitingCv(req.s)
+      ? `I want to apply for this job (${job.source}). Record the target job and its keywords now; set evidence to unknown, because you haven't seen my CV yet. Don't assess fit or ask about requirements yet. Ask me to upload my CV next.`
+      : noMaterial
+        ? `I want to apply for this job (${job.source}). Record the target job and its keywords (evidence unknown for now), then interview me with this job in mind, starting with my current or most recent role. Don't assess fit until you know my experience. Do not add anything I haven't told you.`
+        : `I want to apply for this job (${job.source}). Tailor my resume to it: record the target job and its keywords, show my relevant experience first in the job's language where it is true, and ask me about requirements you can't find evidence for. Do not add anything I haven't told you.`;
     await turn(req, res, [doc, { type: 'text', text: ask }], `Target job: ${label}`);
   });
 

@@ -11,7 +11,7 @@ import { validate } from './validate.js';
 import { lintResume } from '../shared/lint.js';
 import { jdCoverage, jdIssues, evidenceRequests } from '../shared/jd.js';
 import { compareIssues, comparison } from '../shared/compare.js';
-import { nextAsk, askInstruction } from './ask.js';
+import { nextAsk, askInstruction, awaitingCv } from './ask.js';
 import { measureLayout, describeFit } from './layout.js';
 import { getTemplate } from '../shared/templates.js';
 
@@ -46,7 +46,7 @@ function stateBlock(session) {
     `Purpose: ${purposeLine(r.settings.purpose)}`,
     `Assessment: ${JSON.stringify(r.assessment || {})}`,
     `Ask next: ${askInstruction(nextAsk(session))}`,
-    `Evidence requests: ${evidenceLine(r)}`,
+    `Evidence requests: ${awaitingCv(session) ? 'none until the CV arrives.' : evidenceLine(r)}`,
     `Profile: ${JSON.stringify(r.profile)}`,
     `Target job: ${r.target ? `${JSON.stringify({ title: r.target.title, company: r.target.company, seniority: r.target.seniority })}. ${coverageLine(r)}` : session.jd ? 'a job description was provided but set_target_job has not been called yet.' : 'none (general resume).'}`,
     JSON.stringify({ header: r.header, sections: r.sections }),
@@ -188,6 +188,10 @@ export async function runTurn(session, userBlocks) {
             is_error: true,
             content: `Not applied. Invalid input: ${problems.join('; ')}. Send the complete input again.`,
           });
+          continue;
+        }
+        if (block.name === 'assess_fit' && awaitingCv(session)) {
+          results.push({ type: 'tool_result', tool_use_id: block.id, is_error: true, content: "Not applied: the user's CV has not arrived yet, so there is no evidence to judge fit on. Ask them to upload it." });
           continue;
         }
         try {
