@@ -1,5 +1,9 @@
-// Tool definitions the model uses to edit the resume. strict: true makes the
-// API guarantee each call's input matches its schema.
+// Tool definitions the model uses to edit the resume.
+//
+// Not `strict`: with this many tools and nested item schemas, the API refuses to
+// compile the combined grammar ("compiled grammar is too large"). Inputs are
+// validated server-side instead (src/validate.js) before any edit is applied.
+// eager_input_streaming lets large inputs (a full first draft) stream as generated.
 
 import { SECTION_KINDS } from '../shared/templates.js';
 
@@ -58,7 +62,7 @@ function tool(name, description, properties) {
   return {
     name,
     description,
-    strict: true,
+    eager_input_streaming: true,
     input_schema: { type: 'object', properties, required: Object.keys(properties), additionalProperties: false },
   };
 }
