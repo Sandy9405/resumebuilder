@@ -10,6 +10,7 @@ import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
 import { jdIssues, jdCoverage, evidenceRequests } from '../shared/jd.js';
 import { compareIssues, comparison } from '../shared/compare.js';
 import { nextAsk } from './ask.js';
+import { transcribe, voiceProvider, voiceTerms, VoiceError, setVoiceClient, MAX_CLIP_BYTES } from './voice.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
 import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
@@ -56,8 +57,11 @@ const OPENERS = {
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
-export function createApp({ client } = {}) {
+const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_CLIP_BYTES } });
+
+export function createApp({ client, voiceClient } = {}) {
   if (client) setClient(client);
+  if (voiceClient) setVoiceClient(voiceClient);
   const app = express();
   app.disable('x-powered-by');
 
@@ -143,6 +147,23 @@ export function createApp({ client } = {}) {
   });
 
   app.get('/api/sessions/:id', getSession, (req, res) => res.json(view(req.s)));
+
+  // Which speech-to-text the browser should use: Sarvam via this server, or the
+  // browser's own recognition when no key is configured (e.g. local development).
+  app.get('/api/voice', (_req, res) => res.json({ provider: voiceProvider() }));
+
+  // One recorded clip (under 30 seconds) -> text. Names from the user's CV and
+  // target job are sent as key terms so they are spelled right.
+  app.post('/api/sessions/:id/transcribe', getSession, audioUpload.single('audio'), async (req, res) => {
+    if (voiceProvider() !== 'sarvam') return res.status(503).json({ error: 'Voice transcription is not set up on this server. Please type instead.' });
+    if (!req.file?.size) return res.status(400).json({ error: 'No audio received.' });
+    try {
+      res.json(await transcribe(req.file.buffer, req.file.mimetype, voiceTerms(req.s)));
+    } catch (err) {
+      if (err instanceof VoiceError) return res.status(502).json({ error: err.message });
+      throw err;
+    }
+  });
 
   app.post('/api/sessions/:id/message', getSession, async (req, res) => {
     const text = String(req.body?.text || '').trim();

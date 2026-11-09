@@ -93,3 +93,23 @@ test('health is public; APP_PASSWORD protects everything else', async () => {
     locked.close();
   }
 });
+
+test('without a Sarvam key the browser is told to use its own recognition', async () => {
+  const saved = process.env.SARVAM_API_KEY;
+  delete process.env.SARVAM_API_KEY;
+  const plain = createApp({ client: mockClient }).listen(0);
+  await new Promise((r) => plain.once('listening', r));
+  const url = `http://localhost:${plain.address().port}`;
+  try {
+    assert.equal((await (await fetch(`${url}/api/voice`)).json()).provider, 'browser');
+    const { body: s } = await post('/api/sessions', { buildMode: 'talk', template: 'hbs', pages: 1 });
+    const fd = new FormData();
+    fd.append('audio', new Blob([new Uint8Array(10)], { type: 'audio/webm' }), 'c.webm');
+    const r = await fetch(`${url}/api/sessions/${s.id}/transcribe`, { method: 'POST', body: fd });
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /not set up/);
+  } finally {
+    if (saved !== undefined) process.env.SARVAM_API_KEY = saved;
+    plain.close();
+  }
+});

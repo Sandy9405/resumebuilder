@@ -55,6 +55,7 @@ Sessions live in memory, so a redeploy or restart ends any resume in progress. L
 | Variable | Required | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | yes | From console.anthropic.com. The only API key the app needs. |
+| `SARVAM_API_KEY` | for voice | Sarvam speech-to-text; without it the browser's recognition is used |
 | `APP_PASSWORD` | strongly recommended | Without it, anyone with the URL can use your Anthropic credits |
 | `CLAUDE_MODEL`, `CLAUDE_EFFORT`, `CLAUDE_FALLBACKS`, `BROWSER_IDLE_MS` | no | See the table above |
 
@@ -221,6 +222,18 @@ When a job description or link names a requirement the CV doesn't show (evals, B
 
 - **Replies focus on the user's next step**, not the app's process. The resume updates live, so the agent doesn't narrate its edits. Each reply ends with one clear instruction (what to tell, upload or click), or "Nothing else needed. Download the PDF." The edit log under a reply is collapsed behind "Show changes".
 - **Phones** (≤ 860 px wide) get one pane at a time, with Chat and Resume tabs. A dot appears on Resume when it changes. The composer stays pinned at the bottom, controls are thumb-sized, the toolbar fits on two rows, and the text field is 16 px so iOS doesn't zoom. The hidden preview is moved off-screen rather than set to `display: none`, so the page engine can still measure text while you chat.
+
+## Voice: Sarvam speech-to-text
+
+With `SARVAM_API_KEY` set (Railway variable), the mic records audio in the browser and the server transcribes it with Sarvam **`saaras:v4`**, using language auto-detection and `codemix` mode (English words stay English for Hinglish speakers). The key never reaches the browser.
+
+- **Key terms:** up to 50 names from the user's CV and target job (employers, tools, clients, the job's keywords) are sent with every clip. Tested against the real API, they fixed "Scapia", "FastAPI" and "Collegedunia", which came out wrong without them. Key terms bias recognition and can pull a similar-sounding word toward a listed name, so the list holds only the user's own names.
+- **Clips under 30 seconds** (the limit of Sarvam's REST API): a recording is split at natural pauses (25 s at the latest), and each segment is transcribed while the person keeps talking. Segments with no speech are never uploaded.
+- **Silence is detected** from the microphone level against the room's background noise.
+- **Fallback:** without a Sarvam key (e.g. local development), `/api/voice` reports `browser` and the browser's own speech recognition is used.
+- Optional settings: `SARVAM_STT_MODEL` (default `saaras:v4`), `SARVAM_STT_LANGUAGE` (default `unknown`, i.e. auto-detect; `en-IN` forces English), `SARVAM_STT_MODE` (default `codemix`).
+
+`scripts/sarvam-hello.mjs` makes one chat call to check the key works.
 
 ## Voice limits
 
