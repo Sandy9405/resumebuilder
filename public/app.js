@@ -297,6 +297,7 @@ function render() {
   $('#redoBtn').disabled = !S.canRedo;
   renderProfile();
   renderJd();
+  renderEvidence();
   renderAssessment();
   renderHiddenNote();
   renderPreview();
@@ -325,6 +326,54 @@ function renderJd() {
     if (c.nice.total) parts.push(`Nice-to-have: ${c.nice.matched}/${c.nice.total}`);
   } else parts.push('Analysing…');
   $('#jdText').innerHTML = parts.join(' · ');
+}
+
+// "What this job asks for": every required item with its evidence status, and
+// one-tap answers for the ones still open.
+function renderEvidence() {
+  const kws = (S.resume.target?.keywords || []).filter((k) => k.importance === 'must');
+  const box = $('#evidenceBox');
+  box.hidden = !kws.length;
+  if (!kws.length) return;
+  const shown = new Set(S.coverage?.matched || []);
+  const rows = kws.map((k) => {
+    let st;
+    let actions = '';
+    if (shown.has(k.term)) st = '<span class="st shown">On your resume</span>';
+    else if (k.status === 'skipped') st = '<span class="st gap">Skipped: honest gap</span>';
+    else if (k.evidence === 'yes') st = '<span class="st have">You have it: adding</span>';
+    else if (k.evidence === 'no') st = '<span class="st gap">Gap</span>';
+    else {
+      st = '<span class="st ask">Needs your story</span>';
+      actions = `<button type="button" class="ghost" data-story="${escapeHtml(k.term)}">I have a story</button><button type="button" class="ghost" data-skip="${escapeHtml(k.term)}">I don't have this</button>`;
+    }
+    return `<li><span class="term">${escapeHtml(k.term)}</span>${st}${actions}</li>`;
+  });
+  const done = kws.filter((k) => shown.has(k.term) || k.status === 'skipped' || k.evidence === 'no').length;
+  // Open by default on desktop; collapsed on phones, where panels compete with the page.
+  const prev = box.querySelector('details');
+  const open = prev ? prev.open : !isPhone();
+  box.innerHTML = `<details${open ? ' open' : ''}><summary>What this job requires (${done} of ${kws.length} covered)</summary><ul>${rows.join('')}</ul></details>`;
+  box.querySelectorAll('[data-story]').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (isPhone()) showTab('chat');
+      $('#input').value = `About ${b.dataset.story}: `;
+      $('#input').focus();
+    }),
+  );
+  box.querySelectorAll('[data-skip]').forEach((b) => b.addEventListener('click', () => skipRequirement(b.dataset.skip)));
+}
+
+async function skipRequirement(term) {
+  if (busy) return;
+  addBubble('user', `I don't have this: ${term}`);
+  setBusy(true);
+  try {
+    applyView(await api(`/api/sessions/${S.id}/requirement`, { method: 'POST', body: { term } }), true);
+  } catch (err) {
+    setBusy(false);
+    addBubble('error', err.message);
+  }
 }
 
 function openJdDialog(error = '') {
@@ -558,7 +607,7 @@ const label = (c) =>
     'blank-page': 'Blank page', 'table-overflow': 'Table', justified: 'Word spacing', 'font-fallback': 'Font',
     underfilled: 'Page not full', 'fact-dropped': 'Fact lost', 'summary-dropped': 'Profile removed', 'headline-untargeted': 'Positioning', 'low-value-section': 'Low-value section', 'header-incomplete': 'Header', 'links-missing': 'Links',
     'ste-length': 'Too long', 'ste-passive': 'Passive voice', 'ste-pattern': 'Repetitive shape', 'ste-punctuation': 'Punctuation',
-    'jd-missing': 'Job keyword', 'jd-ask': 'Job question', 'jd-gap': 'Job gap',
+    'jd-missing': 'Job keyword', 'jd-ask': 'Needs your story', 'jd-gap': 'Job gap',
     'ats-heading': 'ATS heading', 'ats-dates': 'ATS dates',
     'long-bullet': 'Long bullet', 'marker-misaligned': 'Bullet alignment', 'widow-word': 'Lone word', 'sparse-page': 'Length', 'pdf-mismatch': 'PDF',
   })[c] || c;

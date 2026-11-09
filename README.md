@@ -167,6 +167,17 @@ This came from a real test. For a "Product Manager – Applied AI" job descripti
 | Evaluator notes: "Railway" was dropped, labels like "Structure from ambiguity:", lines written for effect, "Top 1%" wrapping alone in a table cell | `fact-dropped` now also covers named tools, clients and products. `label-leadin` (bold the result, not a label). Slogan patterns flagged as generic phrasing. `table-wrap` visual check |
 | No comparison with the input | A "Compared with your original" panel (facts kept, job keywords before → after) and the same numbers in the agent's feedback |
 
+## Evidence requests: a story for every requirement
+
+When a job description or link names a requirement the CV doesn't show (evals, B2C launches, prototyping, …), the agent asks for evidence, one requirement at a time, and says why:
+
+> "This job requires evals. Can you tell me about a time you did this, or share any proof I can include, like a result, a project, a number or a link? If you don't have anything, just say skip."
+
+- **If the user has a story,** the agent asks at most one follow-up (usually for the result), writes it into the right role, and records it with `mark_requirement` (`has_evidence`).
+- **If they say no or skip,** it's recorded as `no_evidence` and becomes an honest gap. It's never asked again, even when the job is re-read, and never added to the resume.
+- **Only required items are asked about,** in the job's order, capped at 6 questions so the chat never becomes an interrogation. The server tells the agent which item is next, so nothing is skipped by accident.
+- **The "What this job requires" panel** lists each required item as *On your resume*, *Needs your story*, *You have it: adding* or *Skipped: honest gap*. Open items have one-tap **I have a story** (pre-fills the chat) and **I don't have this** buttons. A skip is recorded on the server before the model runs, so it's guaranteed to stick.
+
 ## Honest verdicts
 
 - **Purpose.** Setup asks what the resume is for: a specific job (opens the job description dialog), a type of role (named), or general use. If it's still unknown, the agent asks once and records the answer with `set_purpose`. A general resume gets no fit assessment.

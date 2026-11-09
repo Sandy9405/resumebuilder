@@ -39,10 +39,24 @@ export function jdCoverage(resume) {
       bucket.matched++;
       out.matched.push(k.term);
     } else {
-      out.missing.push({ term: k.term, importance: k.importance, evidence: k.evidence });
+      out.missing.push({ term: k.term, importance: k.importance, evidence: k.evidence, status: k.status || 'open' });
     }
   }
   return out;
+}
+
+export const MAX_EVIDENCE_QUESTIONS = 6;
+
+/**
+ * The next requirement to ask the user about: required items whose evidence is
+ * unknown and not yet answered or skipped, in the JD's order. Capped so the
+ * interview never turns into an interrogation.
+ */
+export function evidenceRequests(resume) {
+  const kws = resume.target?.keywords || [];
+  const asked = kws.filter((k) => k.status === 'answered' || k.status === 'skipped').length;
+  const open = kws.filter((k) => k.importance === 'must' && k.evidence === 'unknown' && (k.status || 'open') === 'open');
+  return { next: asked < MAX_EVIDENCE_QUESTIONS ? open[0] || null : null, open: open.length, asked, cap: MAX_EVIDENCE_QUESTIONS };
 }
 
 /** Findings in the same shape as content checks. */
@@ -54,6 +68,8 @@ export function jdIssues(resume) {
       ? { level: 'warn', code: 'jd-missing', message: `The job asks for "${m.term}" and you have it, but the resume doesn't show it yet.`, path: '' }
       : m.evidence === 'unknown'
         ? { level: 'info', code: 'jd-ask', message: `The job asks for "${m.term}" (${m.importance === 'must' ? 'required' : 'nice to have'}). Do you have experience with it?`, path: '' }
-        : { level: 'info', code: 'jd-gap', message: `Gap: the job asks for "${m.term}" and your material doesn't show it. Not added; it stays a gap unless you have it.`, path: '' },
+        : m.status === 'skipped'
+          ? { level: 'info', code: 'jd-gap', message: `Gap: the job asks for "${m.term}"; you said you don't have it, so it isn't on the resume.`, path: '' }
+          : { level: 'info', code: 'jd-gap', message: `Gap: the job asks for "${m.term}" and your material doesn't show it. Not added; it stays a gap unless you have it.`, path: '' },
   );
 }

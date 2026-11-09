@@ -207,6 +207,11 @@ export const TOOLS = [
       better_fit_roles: { type: 'array', items: S, description: 'For weak fits: up to three roles their real experience fits better. [] otherwise.' },
     },
   ),
+  tool(
+    'mark_requirement',
+    'Record the user\'s answer to an evidence request for one job requirement: has_evidence (they gave a story or proof, which you have written into the resume) or no_evidence (they said they have none, or asked to skip). A no_evidence requirement is never asked about again.',
+    { term: { type: 'string', description: 'The requirement exactly as recorded with set_target_job.' }, outcome: { type: 'string', enum: ['has_evidence', 'no_evidence'] } },
+  ),
   tool('clear_target_job', 'Stop tailoring to a specific job (the user removed the job description).', {}),
   tool('set_format', 'Switch template and/or page count, only when the user asks. Send both values.', {
     template: { type: 'string', enum: ['iitb', 'iima', 'hbs', 'pro'] },

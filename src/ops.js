@@ -253,12 +253,28 @@ export function applyOp(resume, name, input) {
           aliases: strList(k?.aliases).slice(0, 5),
           importance: k?.importance === 'must' ? 'must' : 'nice',
           evidence: ['yes', 'no', 'unknown'].includes(k?.evidence) ? k.evidence : 'unknown',
+          status: 'open',
         }))
         .filter((k) => k.term)
         .slice(0, 40);
+      // The user's answers win over a re-read of the job: a requirement they
+      // skipped stays skipped (never asked again); one they evidenced stays evidenced.
+      const prev = new Map((resume.target?.keywords || []).map((k) => [k.term.toLowerCase(), k]));
+      for (const k of kws) {
+        const p = prev.get(k.term.toLowerCase());
+        if (p?.status === 'skipped') Object.assign(k, { status: 'skipped', evidence: 'no' });
+        else if (p?.status === 'answered') Object.assign(k, { status: 'answered', evidence: p.evidence });
+      }
       resume.target = { title: str(input.title), company: str(input.company), seniority: str(input.seniority), keywords: kws };
       const must = kws.filter((k) => k.importance === 'must').length;
       return `Target job: ${[resume.target.title, resume.target.company].filter(Boolean).join(' at ') || 'set'} (${kws.length} keywords, ${must} required)`;
+    }
+    case 'mark_requirement': {
+      const k = (resume.target?.keywords || []).find((x) => x.term.toLowerCase() === str(input.term).toLowerCase());
+      if (!k) throw new OpError(`No requirement "${input.term}" in the target job. Requirements: ${(resume.target?.keywords || []).map((x) => x.term).join(', ') || '(none)'}`);
+      if (input.outcome === 'has_evidence') Object.assign(k, { evidence: 'yes', status: 'answered' });
+      else Object.assign(k, { evidence: 'no', status: 'skipped' });
+      return input.outcome === 'has_evidence' ? `Evidence recorded for "${k.term}"` : `"${k.term}" skipped: kept as an honest gap`;
     }
     case 'set_purpose': {
       resume.settings.purpose = cleanPurpose(input);

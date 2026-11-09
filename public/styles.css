@@ -185,3 +185,16 @@ details.changes ul { margin: 4px 0 0; padding-left: 18px; }
 .assess .muted { color: var(--muted); }
 .assess .q { font-style: italic; }
 .assess button { padding: 3px 10px; font-size: 13px; }
+
+.evidence { padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13.5px; }
+.evidence summary { cursor: pointer; font-weight: 600; }
+.evidence ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.evidence li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.evidence .term { font-weight: 600; }
+.evidence .st { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.evidence .st.shown { color: var(--ok); }
+.evidence .st.ask { color: var(--accent); }
+.evidence .st.have { color: var(--warn); }
+.evidence .st.gap { color: var(--muted); }
+.evidence button { padding: 3px 10px; font-size: 13px; }
+@media (max-width: 860px) { .evidence { padding: 8px 12px; max-height: 30vh; overflow-y: auto; } .evidence button { min-height: 36px; } }
