@@ -119,6 +119,13 @@ test('layout engine: QA, pagination, density and PDF', async (t) => {
     }
   });
 
+  await t.test('a fragment spilling onto its own line in a table cell is flagged ("Top 1%")', async () => {
+    const r = sampleResume('iima', 1);
+    r.sections[1].items[0].note = "Dean's List · Rank 2 / 160 (Top 1%)";
+    const l = await measureLayout(r);
+    assert.ok(l.issues.some((i) => i.code === 'table-wrap' && /Top 1%/.test(i.message)));
+  });
+
   await t.test('two-page limit with one page of content suggests one page', async () => {
     const l = await measureLayout(sampleResume('hbs', 2));
     assert.ok(l.issues.some((i) => i.code === 'sparse-page'));

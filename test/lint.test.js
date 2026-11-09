@@ -67,3 +67,13 @@ test('ATS: creative headings, missing contact, two-digit years and mixed date fo
   r.sections[0].title = 'Professional Experience';
   assert.ok(!atsIssues(r).some((i) => i.code === 'ats-heading'));
 });
+
+test('label lead-ins and slogans written for effect are flagged', () => {
+  const mk = (b) => resume([b]);
+  const codes = (b) => lintResume(mk(b), '2021 2023').map((i) => i.code);
+  assert.ok(codes('Structure from ambiguity: launched a visa vertical from scratch').includes('label-leadin'));
+  assert.ok(codes('**Ran the entire company as one mandate**: owned P&L and pricing').includes('label-leadin'));
+  assert.ok(!codes('Launched a visa vertical from scratch, scaling to 5 visas a month').includes('label-leadin'));
+  assert.ok(codes('Serial operator built for the default-owner seat').includes('ai-language'));
+  assert.ok(codes('Launched two corridors with data and ops teams recruited to the work').includes('ai-language'));
+});

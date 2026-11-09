@@ -50,6 +50,37 @@ function allResumeText(resume) {
 
 const visible = (resume) => [...resumeTexts(resume)].map(([, t]) => t);
 
+// Named things a reader looks for: tools, clients, products, places. Only
+// "strong" terms are tracked, to keep noise low: words with internal capitals,
+// digits or all caps (MongoDB, FastAPI, GPT, IKEA), and capitalised words in
+// list-like lines (a tech stack, a client list): "React 19, FastAPI, Railway".
+const COMMON_CAPS = new Set(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'Present', 'The', 'And', 'For', 'With', 'From', 'Our', 'My', 'We', 'I', 'Rs', 'Cr', 'Lakh', 'Inc', 'Ltd', 'Pvt']);
+
+export function cvTerms(cvText) {
+  const terms = new Map();
+  for (const raw of stripContact(cvText).split(/\n+/)) {
+    const line = raw.replace(/^[\s•▪◦*\-–]+/, '').trim();
+    if (!line || line === line.toUpperCase()) continue; // headings, names in caps
+    const listy = (line.match(/[,·|]/g) || []).length >= 2;
+    const words = line.match(/[A-Za-z][A-Za-z0-9+#&]*(?:[.'][A-Za-z0-9]+)*/g) || [];
+    words.forEach((w, i) => {
+      if (w.length < 2 || COMMON_CAPS.has(w)) return;
+      const strong = /[a-z][A-Z]/.test(w) || /^[A-Z]{2,}$/.test(w) || (/[A-Za-z]\d|\d[A-Za-z]/.test(w) && /^[A-Z]/.test(w));
+      const listed = listy && i > 0 && /^[A-Z][a-z]/.test(w);
+      if ((strong || listed) && !terms.has(w)) terms.set(w, line.replace(/\s+/g, ' '));
+    });
+  }
+  return terms;
+}
+
+export function termRetention(resume, cvText) {
+  if (!cvText) return null;
+  const all = allResumeText(resume).join('\n');
+  const dropped = [];
+  for (const [term, context] of cvTerms(cvText)) if (!termPattern(term).test(all)) dropped.push({ term, context });
+  return dropped;
+}
+
 export function factRetention(resume, cvText) {
   if (!cvText) return null;
   const facts = cvFacts(cvText);
@@ -80,6 +111,9 @@ export function compareIssues(resume, cvText) {
     for (const d of fr.dropped.slice(0, 8)) {
       add('warn', 'fact-dropped', `"${d.value}" from your CV is no longer anywhere in the resume: "${d.context.slice(0, 90)}". Restore it, or keep it in reserve if it doesn't fit.`);
     }
+  }
+  for (const d of (termRetention(resume, cvText) || []).slice(0, 8)) {
+    add('warn', 'fact-dropped', `"${d.term}" from your CV is no longer anywhere in the resume: "${d.context.slice(0, 90)}". Keep named tools, clients and products unless they are irrelevant to the target.`);
   }
   if (cvText && SUMMARY_HEAD.test(cvText) && !sections.some((s) => s.kind === 'summary')) {
     add('warn', 'summary-dropped', 'Your CV had a profile summary and the resume has none. For experienced people and career switchers it is the main positioning tool: rewrite it for the target, do not delete it.');

@@ -106,3 +106,13 @@ test('server: uploading a CV enables the comparison and fact checks', async () =
     app.close();
   }
 });
+
+test('named tools and clients from the CV must survive (e.g. "Railway" in the stack)', async () => {
+  const { cvTerms, termRetention } = await import('../shared/compare.js');
+  const cv = 'EXPERIENCE\nFull-stack, solo: React 19, FastAPI, MongoDB, Railway, 50+ endpoints\nOnboarded partners including MakeMyTrip and Visa2Fly.\nBuilt the first version alone.';
+  const t = cvTerms(cv);
+  for (const term of ['React', 'FastAPI', 'MongoDB', 'Railway', 'MakeMyTrip', 'Visa2Fly']) assert.ok(t.has(term), term);
+  assert.ok(!t.has('Built') && !t.has('EXPERIENCE'), 'sentence starts and headings are not terms');
+  const r = { header: {}, sections: [{ kind: 'experience', items: [{ bullets: ['Built the stack on React 19, FastAPI and MongoDB'], reserve: ['Partners: MakeMyTrip, Visa2Fly'] }] }] };
+  assert.deepEqual(termRetention(r, cv).map((d) => d.term), ['Railway']);
+});

@@ -41,6 +41,15 @@ export const AI_PHRASES = [
   [/\b(world|best)[- ]class\b/i, 'world-class'],
   [/\b(innovative|holistic|robust|impactful)\b/i, 'vague adjective'],
   [/\bmeticulous(ly)?\b/i, 'meticulous'],
+  // Self-descriptions written for effect: say what was done instead.
+  [/\bbuilt for the\b/i, 'built for the… (slogan)'],
+  [/\bdefault[- ]owner\b/i, 'default-owner (slogan)'],
+  [/\bstructure (to|from) ambiguity\b/i, 'structure from ambiguity (slogan)'],
+  [/\bhold(s)? real numbers\b/i, 'hold real numbers (slogan)'],
+  [/\bby default\b/i, 'by default (slogan)'],
+  [/\b(serial|natural)[- ](operator|builder|leader)\b/i, 'serial operator (slogan)'],
+  [/\b(recruited|brought|rallied) to the (work|cause|mission)\b/i, 'recruited to the work (written for effect)'],
+  [/\b(wear(s|ing)? many hats|move the needle|rock ?star|ninja|guru|obsessed with)\b/i, 'cliché'],
 ];
 
 const PLACEHOLDER = /\[[^\]]*\]|\bTBD\b|\bX+%|\bN\/A\b|lorem ipsum|\?\?/i;
@@ -155,6 +164,11 @@ export function lintResume(resume, sourceText) {
         issues.push({ level: 'warn', code: 'ste-passive', message: `Passive voice; say who did it: "${short}"`, path });
       }
       if (/,\s+(\w+ly\s+)?\w{3,}ing\b/.test(text)) ingTails++;
+      // "Structure from ambiguity: conceptualised…" - a label in front of the sentence is filler.
+      const label = text.match(/^\s*(\*\*)?([^:*]{3,45})(\*\*)?:\s/);
+      if (label && label[2].trim().split(/\s+/).length <= 7) {
+        issues.push({ level: 'warn', code: 'label-leadin', message: `Starts with a label ("${label[2].trim()}:"). Lead with the action and bold the result instead: "${short}"`, path });
+      }
       if (/[—]|\s-\s/.test(text)) issues.push({ level: 'info', code: 'ste-punctuation', message: `Use a comma or a separate sentence instead of a dash: "${short}"`, path });
       if (FIRST_PERSON.test(text)) {
         issues.push({ level: 'warn', code: 'first-person', message: `First-person pronoun in a bullet: "${short}"`, path });

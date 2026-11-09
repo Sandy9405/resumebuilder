@@ -164,6 +164,7 @@ This came from a real test. For a "Product Manager – Applied AI" job descripti
 | Compression dropped facts ("headcount 5 to 1", "900-line"), and nothing noticed | `fact-dropped`: every number in the uploaded CV must stay on the page or in reserve |
 | The one-page fill rule added a Hobbies section to a senior resume | Fill is stage-aware: professionals get their own dropped material back first. `low-value-section` flags hobbies and school results for professionals |
 | No real tailoring: product evidence was framed as operations, and the job's core asks were never raised | Prompt: translate evidence into the target role's terms, ask about every unconfirmed required keyword before finishing, plus an Applied-AI question set |
+| Evaluator notes: "Railway" was dropped, labels like "Structure from ambiguity:", lines written for effect, "Top 1%" wrapping alone in a table cell | `fact-dropped` now also covers named tools, clients and products. `label-leadin` (bold the result, not a label). Slogan patterns flagged as generic phrasing. `table-wrap` visual check |
 | No comparison with the input | A "Compared with your original" panel (facts kept, job keywords before → after) and the same numbers in the agent's feedback |
 
 ## Honest verdicts
@@ -193,6 +194,11 @@ This came from a real test. For a "Product Manager – Applied AI" job descripti
   - extra AI-slop terms flagged.
 
   Technical terms and the target job's keywords are exempt from the vocabulary rules. The 60–70% plain / 30–40% terms split is guidance in the prompt; it isn't measured, because it can't be measured reliably.
+
+## Replies and mobile
+
+- **Replies focus on the user's next step**, not the app's process. The resume updates live, so the agent doesn't narrate its edits. Each reply ends with one clear instruction (what to tell, upload or click), or "Nothing else needed. Download the PDF." The edit log under a reply is collapsed behind "Show changes".
+- **Phones** (≤ 860 px wide) get one pane at a time, with Chat and Resume tabs. A dot appears on Resume when it changes. The composer stays pinned at the bottom, controls are thumb-sized, the toolbar fits on two rows, and the text field is 16 px so iOS doesn't zoom. The hidden preview is moved off-screen rather than set to `display: none`, so the page engine can still measure text while you chat.
 
 ## Voice limits
 

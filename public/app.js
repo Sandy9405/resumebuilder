@@ -74,15 +74,21 @@ function addBubble(role, text, changes) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
   div.textContent = text;
+  // Users need the result, not the log: edits are tucked away, collapsed.
   if (changes?.length) {
+    const det = document.createElement('details');
+    det.className = 'changes';
+    const sum = document.createElement('summary');
+    sum.textContent = 'Show changes';
+    det.appendChild(sum);
     const ul = document.createElement('ul');
-    ul.className = 'changes';
     for (const c of changes) {
       const li = document.createElement('li');
       li.textContent = c;
       ul.appendChild(li);
     }
-    div.appendChild(ul);
+    det.appendChild(ul);
+    div.appendChild(det);
   }
   $('#messages').appendChild(div);
   $('#messages').scrollTop = $('#messages').scrollHeight;
@@ -273,9 +279,11 @@ function speak(text) {
 
 // ---------- Preview ----------
 function applyView(v, fromTurn = false) {
+  const changed = JSON.stringify(v.resume) !== JSON.stringify(S?.resume);
   S = { ...S, ...v };
   if (fromTurn) setBusy(false);
   render();
+  if (changed) markResumeUpdated();
 }
 
 function render() {
@@ -602,6 +610,20 @@ async function download(kind) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
+// ---------- Mobile: one pane at a time ----------
+const isPhone = () => window.matchMedia('(max-width: 860px)').matches;
+function showTab(tab) {
+  document.body.dataset.tab = tab;
+  document.querySelectorAll('.mobile-tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  if (tab === 'resume') {
+    $('#resumeDot').hidden = true;
+    requestAnimationFrame(() => !$('#paper').hidden && fitScale());
+  }
+}
+function markResumeUpdated() {
+  if (isPhone() && document.body.dataset.tab !== 'resume') $('#resumeDot').hidden = false;
+}
+
 // ---------- Wiring ----------
 async function boot() {
   buildSetup();
@@ -626,6 +648,8 @@ async function boot() {
     e.preventDefault();
     history(e.shiftKey ? 'redo' : 'undo');
   });
+  document.querySelectorAll('.mobile-tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  showTab('chat');
   $('#jdBtn').addEventListener('click', () => openJdDialog());
   $('#jdCancel').addEventListener('click', () => $('#jdDialog').close());
   $('#jdForm').addEventListener('submit', submitJd);

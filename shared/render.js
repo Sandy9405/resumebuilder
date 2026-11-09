@@ -559,6 +559,23 @@ function engine() {
       });
       pg.querySelectorAll('table.edu td, table.edu th').forEach((td) => {
         if (td.scrollWidth > td.clientWidth + 1) add('error', 'table-overflow', `Table cell text does not fit its column: "${short(textOf(td))}"`, td);
+        // A word or two stranded on the cell's last line ("Top 1%" on its own line).
+        const range = document.createRange();
+        range.selectNodeContents(td);
+        // Inline elements and their text both report rects; keep each line box once.
+        const seen = new Set();
+        const rects = Array.from(range.getClientRects()).filter((x) => {
+          const k = `${Math.round(x.top)}:${Math.round(x.left)}:${Math.round(x.width)}`;
+          return x.width > 0.5 && !seen.has(k) && seen.add(k);
+        });
+        if (rects.length < 2) return;
+        const lastTop = rects[rects.length - 1].top;
+        if (Math.abs(rects[0].top - lastTop) < 2) return; // single line
+        const lastLine = rects.filter((x) => Math.abs(x.top - lastTop) < 2).reduce((w, x) => w + x.width, 0);
+        const cellText = td.getBoundingClientRect().width - 8;
+        if (lastLine < cellText * 0.4) {
+          add('warn', 'table-wrap', `A table cell wraps a short fragment onto its own line: "${short(textOf(td))}". Shorten the text so it fits.`, td);
+        }
       });
     });
     if (bulletLefts.size > 1) add('error', 'indent-inconsistent', `Bullet text starts at ${bulletLefts.size} different indents.`);

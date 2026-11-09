@@ -58,6 +58,10 @@
 
   <!-- Workspace -->
   <div id="workspace" class="workspace" hidden>
+    <nav class="mobile-tabs" role="tablist" aria-label="View">
+      <button type="button" role="tab" data-tab="chat" aria-selected="true">Chat</button>
+      <button type="button" role="tab" data-tab="resume" aria-selected="false">Resume <span id="resumeDot" class="dot" hidden aria-label="updated"></span></button>
+    </nav>
     <section class="chat" aria-label="Conversation">
       <header class="chat-head">
         <b>Resume Builder</b>
@@ -97,7 +101,7 @@
         <span class="spacer"></span>
         <button id="undoBtn" class="ghost icon" title="Undo (Ctrl+Z)" disabled>↶</button>
         <button id="redoBtn" class="ghost icon" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
-        <label class="toggle"><input type="checkbox" id="editToggle"> Edit text</label>
+        <label class="toggle" title="Edit the text directly on the page"><input type="checkbox" id="editToggle"> Edit</label>
         <button id="checksBtn" class="ghost">Checks <span id="checksCount" class="count">0</span></button>
         <button id="pdfBtn" class="primary">PDF</button>
         <button id="docxBtn" class="ghost">DOCX</button>
