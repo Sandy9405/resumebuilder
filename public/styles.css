@@ -218,6 +218,14 @@ details.changes ul { margin: 4px 0 0; padding-left: 18px; }
 .count[hidden] { display: none; }
 .composer[data-mode="story"] .typebar { display: none; }
 
+/* The question being answered: a reference card inside the voice box, shown only
+   when the agent's question is not visible in the chat. Tap to read all of it. */
+.voice-q { display: none; }
+.composer:is([data-mode="story"], [data-mode="recording"], [data-mode="transcribing"]) .voice-q:not([hidden]) { display: block; width: 100%; margin: -6px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); text-align: left; cursor: pointer; animation: rise 0.25s var(--ease); }
+.voice-q-label { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.voice-q-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; line-height: 1.4; color: var(--ink); }
+.voice-q[aria-expanded="true"] .voice-q-text { display: block; max-height: 32vh; overflow-y: auto; }
+
 /* Recording: live level, countdown, one clear way to finish. */
 .composer[data-mode="recording"], .composer[data-mode="transcribing"] { grid-template-columns: 1fr; padding: 18px 14px 14px; border-radius: var(--r-lg); background: linear-gradient(180deg, var(--rec-soft), transparent 75%), var(--surface-2); }
 .composer[data-mode="recording"] .voice, .composer[data-mode="transcribing"] .voice { flex-direction: column; text-align: center; gap: 12px; }
@@ -341,6 +349,11 @@ details.changes ul { margin: 4px 0 0; padding-left: 18px; }
   .messages { padding: 8px 12px 12px; }
   .msg { max-width: 90%; }
   .composer { margin: 0 10px max(8px, env(safe-area-inset-bottom)); }
+  /* Phones: a slightly smaller voice box so more of the conversation stays visible. */
+  .composer:is([data-mode="story"], [data-mode="recording"], [data-mode="transcribing"]) { padding: 14px 12px 10px; }
+  .composer:is([data-mode="story"], [data-mode="recording"]) .mic { width: 64px; height: 64px; }
+  .composer[data-mode="story"] .mic svg { width: 28px; height: 28px; }
+  .composer:is([data-mode="story"], [data-mode="recording"]) .voice { gap: 8px; }
   .typebar textarea { font-size: 16px; } /* stops iOS zooming on focus */
   .speak-toggle { display: none; }
   .quick { padding: 2px 12px 8px; }
