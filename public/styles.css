@@ -54,8 +54,8 @@ legend { font-weight: 600; margin-bottom: 10px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .card { display: flex; flex-direction: column; gap: 4px; padding: 14px; background: var(--panel); border: 1.5px solid var(--line); border-radius: 10px; cursor: pointer; }
 .card span { color: var(--muted); font-size: 13.5px; }
-.card input { position: absolute; opacity: 0; pointer-events: none; }
-.card:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.card input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.card:has(input[type="radio"]:checked) { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .card:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Workspace */
@@ -129,3 +129,15 @@ legend { font-weight: 600; margin-bottom: 10px; }
 .error-text { color: var(--bad); margin: 0; font-size: 13.5px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .quick { flex-wrap: wrap; }
+
+.role-input { margin-top: 6px; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.assess { display: flex; flex-direction: column; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13.5px; }
+.assess .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.assess .tag { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.assess .tag.strong, .assess .tag.good, .assess .tag.already_strong { color: var(--ok); }
+.assess .tag.improve { color: var(--accent); }
+.assess .tag.weak { color: var(--warn); }
+.assess .tag.very_weak { color: var(--bad); }
+.assess .muted { color: var(--muted); }
+.assess .q { font-style: italic; }
+.assess button { padding: 3px 10px; font-size: 13px; }

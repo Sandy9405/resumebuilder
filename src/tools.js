@@ -162,6 +162,39 @@ export const TOOLS = [
       },
     },
   ),
+  tool(
+    'set_purpose',
+    'Record what this resume is for once the user tells you: a specific job (they have or will give a job description), a type of role (name it), or general use.',
+    { type: { type: 'string', enum: ['jd', 'role', 'general'] }, role: { type: 'string', description: 'The role or job family for type "role", e.g. "Product Manager". "" otherwise.' } },
+  ),
+  tool(
+    'assess_cv',
+    'Your honest verdict on an uploaded CV, given before or with the first draft: can you materially improve it, or is it already strong? Shown to the user.',
+    {
+      verdict: { type: 'string', enum: ['improve', 'already_strong'] },
+      summary: { type: 'string', description: 'One or two plain sentences for the user.' },
+      improvements: {
+        type: 'array',
+        items: S,
+        description: 'The specific, material improvements you will make (or the only light polish, if already strong). Short phrases.',
+      },
+    },
+  ),
+  tool(
+    'assess_fit',
+    'Your honest verdict on how well the user\'s real experience fits the target (a job description, or a role/job family they named). Shown to the user. Call after the first read, and again after the user answers your decisive question.',
+    {
+      target: { type: 'string', description: 'The role being assessed, e.g. "Product Manager at Swiggy" or "Data Scientist (general)".' },
+      level: { type: 'string', enum: ['strong', 'good', 'weak', 'very_weak'] },
+      summary: { type: 'string', description: 'Two plain sentences: why, based on their evidence.' },
+      gaps: { type: 'array', items: S, description: 'The requirements their material does not show, most important first.' },
+      decisive_question: {
+        type: 'string',
+        description: 'For weak or very weak fits: the one question whose answer could change the verdict, e.g. "Have you shipped anything to production in Python?". "" once asked and answered, or if no answer could change it.',
+      },
+      better_fit_roles: { type: 'array', items: S, description: 'For weak fits: up to three roles their real experience fits better. [] otherwise.' },
+    },
+  ),
   tool('clear_target_job', 'Stop tailoring to a specific job (the user removed the job description).', {}),
   tool('set_format', 'Switch template and/or page count, only when the user asks. Send both values.', {
     template: { type: 'string', enum: ['iitb', 'iima', 'hbs'] },

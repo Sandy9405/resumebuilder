@@ -34,6 +34,16 @@
       </div>
     </fieldset>
 
+    <fieldset>
+      <legend>4. What is this resume for?</legend>
+      <div class="cards" data-name="purpose">
+        <label class="card"><input type="radio" name="purpose" value="jd"><b>A specific job</b><span>I have the job description or a link. I'll tailor to it and tell you honestly how well you fit.</span></label>
+        <label class="card"><input type="radio" name="purpose" value="role"><b>A type of role</b><span>e.g. Product Manager, Data Analyst.</span>
+          <input type="text" id="purposeRole" class="role-input" placeholder="Which role?" maxlength="120"></label>
+        <label class="card"><input type="radio" name="purpose" value="general" checked><b>General use</b><span>A strong all-round resume, no single target.</span></label>
+      </div>
+    </fieldset>
+
     <button id="startBtn" class="primary big">Start</button>
   </main>
 
@@ -84,6 +94,7 @@
         <button id="docxBtn" class="ghost">DOCX</button>
       </div>
       <div id="checksPanel" class="checks" hidden></div>
+      <div id="assessBar" class="assess" hidden></div>
       <div id="jdBar" class="jd-bar" hidden>
         <span id="jdText"></span>
         <button type="button" id="jdRemove" class="ghost small">Remove job</button>

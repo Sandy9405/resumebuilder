@@ -38,11 +38,20 @@ function stateBlock(session) {
     `Build mode: ${r.settings.buildMode}. Format: ${t.label} (id ${t.id}), ${t.page.name} paper. Page limit: ${r.settings.pages}.`,
     `Layout: ${session.layout ? describeFit(session.layout) : 'not measured yet.'}`,
     hidden.length ? `Hidden for length (kept in data): ${hidden.join('; ')}.` : 'Hidden for length: nothing.',
+    `Purpose: ${purposeLine(r.settings.purpose)}`,
+    `Assessment: ${JSON.stringify(r.assessment || {})}`,
     `Profile: ${JSON.stringify(r.profile)}`,
     `Target job: ${r.target ? `${JSON.stringify({ title: r.target.title, company: r.target.company, seniority: r.target.seniority })}. ${coverageLine(r)}` : session.jd ? 'a job description was provided but set_target_job has not been called yet.' : 'none (general resume).'}`,
     JSON.stringify({ header: r.header, sections: r.sections }),
     '</resume_state>',
   ].join('\n');
+}
+
+function purposeLine(p) {
+  if (p?.type === 'jd') return 'a specific job; the user has or will give a job description.';
+  if (p?.type === 'role') return `${p.role} roles (no job description). Assess fit against what this role typically requires.`;
+  if (p?.type === 'general') return 'general use; no single target. Present their strongest, most transferable experience.';
+  return 'not stated yet. Ask early, in one question: a specific job, a type of role, or general use.';
 }
 
 function coverageLine(r) {

@@ -37,13 +37,21 @@ function buildSetup() {
 
 async function start() {
   const val = (n) => document.querySelector(`input[name="${n}"]:checked`).value;
-  const body = { buildMode: val('buildMode'), template: val('template'), pages: Number(val('pages')) };
+  const purposeType = val('purpose');
+  const role = $('#purposeRole').value.trim();
+  if (purposeType === 'role' && !role) {
+    $('#purposeRole').focus();
+    $('#purposeRole').placeholder = 'Type the role first';
+    return;
+  }
+  const body = { buildMode: val('buildMode'), template: val('template'), pages: Number(val('pages')), purpose: { type: purposeType, role } };
   S = await api('/api/sessions', { method: 'POST', body });
   store.set('sessionId', S.id);
   $('#speakToggle').checked = body.buildMode !== 'upload';
   showWorkspace();
   render();
   if (body.buildMode === 'talk') speak(S.chat[0]?.text);
+  if (purposeType === 'jd') openJdDialog();
 }
 
 function showWorkspace() {
@@ -271,6 +279,7 @@ function render() {
   $('#redoBtn').disabled = !S.canRedo;
   renderProfile();
   renderJd();
+  renderAssessment();
   renderHiddenNote();
   renderPreview();
   renderChecks();
@@ -336,6 +345,54 @@ async function submitJd(e) {
   }
 }
 
+const FIT_LABEL = { strong: 'Strong fit', good: 'Good fit', weak: 'Weak fit', very_weak: 'Very weak fit' };
+const QUALITY_LABEL = { 'ai-language': 'generic phrases', 'ste-passive': 'passive voice', 'ste-length': 'overlong bullets', 'first-person': 'first person' };
+
+function renderAssessment() {
+  const a = S.resume.assessment || {};
+  const parts = [];
+  if (a.cv) {
+    const q = S.quality;
+    const moved = q ? Object.keys(QUALITY_LABEL).filter((k) => q.before[k] || q.after[k]).map((k) => `${QUALITY_LABEL[k]} ${q.before[k]} → ${q.after[k]}`) : [];
+    parts.push(
+      `<div class="row"><span class="tag ${a.cv.verdict}">${a.cv.verdict === 'already_strong' ? 'Your CV is already strong' : 'Improving your CV'}</span>` +
+        `<span>${escapeHtml(a.cv.summary)}</span>${moved.length ? `<span class="muted">Measured: ${escapeHtml(moved.join(' · '))}</span>` : ''}</div>`,
+    );
+  }
+  if (a.fit) {
+    const f = a.fit;
+    const weak = f.level === 'weak' || f.level === 'very_weak';
+    parts.push(
+      `<div class="row"><span class="tag ${f.level}">${FIT_LABEL[f.level]}${f.target ? ` · ${escapeHtml(f.target)}` : ''}</span><span>${escapeHtml(f.summary)}</span></div>` +
+        (f.gaps.length ? `<div class="row muted">Gaps: ${escapeHtml(f.gaps.join(', '))}</div>` : '') +
+        (weak && f.question && !f.override ? `<div class="row q">To check: ${escapeHtml(f.question)} (answer in the chat)</div>` : '') +
+        (weak && f.better_fits.length ? `<div class="row muted">Better fits for your experience: ${escapeHtml(f.better_fits.join(', '))}</div>` : '') +
+        (weak
+          ? f.override
+            ? '<div class="row"><span class="tag improve">Applying anyway</span><span class="muted">Tailored honestly; gaps stay gaps.</span></div>'
+            : '<div class="row"><button type="button" id="applyAnyway" class="ghost">Apply anyway</button><span class="muted">I\'ll tailor it as well as I honestly can.</span></div>'
+          : ''),
+    );
+  }
+  $('#assessBar').hidden = !parts.length;
+  $('#assessBar').innerHTML = parts.join('');
+  $('#applyAnyway')?.addEventListener('click', applyAnywayClick);
+}
+
+async function applyAnywayClick() {
+  if (busy) return;
+  addBubble('user', 'Apply anyway');
+  setBusy(true, 'Tailoring your resume for this role…');
+  try {
+    const r = await api(`/api/sessions/${S.id}/apply-anyway`, { method: 'POST' });
+    applyView(r, true);
+    speak(r.reply);
+  } catch (err) {
+    setBusy(false);
+    addBubble('error', err.message);
+  }
+}
+
 function renderHiddenNote() {
   const hidden = [];
   let reserved = 0;
@@ -392,7 +449,7 @@ function renderBadge() {
   b.className = `badge ${!l.fits ? 'bad' : l.level || underfilled ? 'tight' : 'ok'}`;
   b.textContent = !l.fits
     ? `${l.pages} pages · over limit`
-    : `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · spacing tightened' : l.expand ? ` · text ${l.bodySize}pt to fill` : ''}${underfilled ? ' · needs more content' : ''}`;
+    : `${l.pages} of ${l.limit} page${l.limit > 1 ? 's' : ''}${l.level ? ' · tightened' : underfilled ? ' · add content' : l.expand ? ' · enlarged' : ''}`;
   b.title = !l.fits
     ? `About ${Math.round(l.overflow * 100)}% of a page too long. Ask the assistant to tighten it.`
     : l.level
@@ -531,6 +588,7 @@ async function download(kind) {
 async function boot() {
   buildSetup();
   setupVoice();
+  $('#purposeRole').addEventListener('focus', () => (document.querySelector('input[name="purpose"][value="role"]').checked = true));
   $('#startBtn').addEventListener('click', () => start().catch((e) => alert(e.message)));
   $('#composer').addEventListener('submit', (e) => { e.preventDefault(); send($('#input').value); });
   $('#input').addEventListener('keydown', (e) => {

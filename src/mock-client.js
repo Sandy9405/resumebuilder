@@ -80,6 +80,7 @@ export const mockClient = {
             [
               { type: 'text', text: '(mock) Here is a first draft using sample data.' },
               { type: 'tool_use', id: id(), name: 'create_resume', input: SAMPLE },
+              { type: 'tool_use', id: id(), name: 'assess_cv', input: { verdict: 'improve', summary: '(mock) Duties can become achievements.', improvements: ['Turn duties into results', 'Remove generic phrases'] } },
               {
                 type: 'tool_use',
                 id: id(),
@@ -109,6 +110,19 @@ export const mockClient = {
                     { term: 'Kubernetes', aliases: [], importance: 'must', evidence: 'unknown' },
                     { term: 'Kafka', aliases: [], importance: 'nice', evidence: 'no' },
                   ],
+                },
+              },
+              {
+                type: 'tool_use',
+                id: id(),
+                name: 'assess_fit',
+                input: {
+                  target: 'Backend Engineer at Example Co',
+                  level: 'weak',
+                  summary: '(mock) Python and PostgreSQL match, but the role needs Kubernetes and 3+ years of backend work.',
+                  gaps: ['Kubernetes', '3+ years backend'],
+                  decisive_question: 'Have you deployed services on Kubernetes, even in a side project?',
+                  better_fit_roles: ['Junior Backend Engineer', 'Data Engineer'],
                 },
               },
             ],

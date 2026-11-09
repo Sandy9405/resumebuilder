@@ -133,6 +133,16 @@ The **Target a job** button takes a link, a PDF/DOCX/TXT file, or pasted text.
   - Every block is painted in a single pass, so headings are no longer written to the PDF before the body text.
 - Content checks flag non-standard section headings, missing email or phone, two-digit years and mixed date formats.
 
+## Honest verdicts
+
+- **Purpose.** Setup asks what the resume is for: a specific job (opens the job description dialog), a type of role (named), or general use. If it's still unknown, the agent asks once and records the answer with `set_purpose`. A general resume gets no fit assessment.
+- **"Your CV is already strong."** For an uploaded CV, Claude calls `assess_cv` with the verdict `improve` or `already_strong`. When it's already strong, Claude says so, moves it into the format, and makes only real fixes; it never rewords good bullets for the sake of change. Next to the verdict, the app shows **measured** before/after counts from the uploaded text and the built resume (generic phrases, passive voice, overlong bullets, first person), so "improved" is checked rather than claimed.
+- **Fit.** With a target (a job description or a named role), Claude calls `assess_fit`: `strong`, `good`, `weak` or `very_weak`, with the gaps listed.
+  - For weak fits, it first asks the one **decisive question** that could change the verdict.
+  - If the answer shows real evidence, it re-assesses. If not, it says plainly that this is a weak fit and suggests better-fit roles.
+  - The panel shows an **Apply anyway** button. Pressing it records the choice (it survives re-assessment of the same target) and tailors honestly: transferable evidence first, gaps kept as gaps, plus advice on which gaps to cover in a cover letter or interview.
+  - The server notes, but doesn't override, a "strong" or "good" verdict when most required keywords are marked as missing.
+
 ## Content rules
 
 - **Complete header.** Every resume has a name, a sub-header (a one-line professional title), email, phone, city, and every profile link the user has (LinkedIn, portfolio, GitHub, personal site). Links are real hyperlinks in the PDF and DOCX, displayed as the address itself.

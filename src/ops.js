@@ -16,15 +16,25 @@ export function emptyResume(settings = {}) {
       template: TEMPLATES[settings.template] ? settings.template : 'hbs',
       pages: settings.pages === 2 ? 2 : 1,
       buildMode: settings.buildMode || 'talk',
+      purpose: cleanPurpose(settings.purpose),
     },
     header: { name: '', tagline: '', email: '', phone: '', location: '', links: [], details: [] },
     profile: emptyProfile(),
     target: null,
+    assessment: { cv: null, fit: null },
     sections: [],
   };
 }
 
 export const CAREER_STAGES = ['student', 'early', 'mid', 'experienced', 'senior'];
+export const FIT_LEVELS = ['strong', 'good', 'weak', 'very_weak'];
+
+/** What the resume is for: a specific job (JD), a type of role, or general use. */
+export function cleanPurpose(p) {
+  const type = ['jd', 'role', 'general'].includes(p?.type) ? p.type : '';
+  const role = typeof p?.role === 'string' ? p.role.trim().slice(0, 120) : '';
+  return { type: type === 'role' && !role ? 'general' : type, role: type === 'role' ? role : '' };
+}
 
 export function emptyProfile() {
   return {
@@ -234,6 +244,41 @@ export function applyOp(resume, name, input) {
       const must = kws.filter((k) => k.importance === 'must').length;
       return `Target job: ${[resume.target.title, resume.target.company].filter(Boolean).join(' at ') || 'set'} (${kws.length} keywords, ${must} required)`;
     }
+    case 'set_purpose': {
+      resume.settings.purpose = cleanPurpose(input);
+      const pp = resume.settings.purpose;
+      return pp.type === 'role' ? `Purpose: applying for ${pp.role} roles` : pp.type === 'jd' ? 'Purpose: a specific job' : 'Purpose: general resume';
+    }
+    case 'assess_cv': {
+      const verdict = input.verdict === 'already_strong' ? 'already_strong' : 'improve';
+      resume.assessment = { ...(resume.assessment || {}), cv: { verdict, summary: str(input.summary), improvements: strList(input.improvements).slice(0, 8) } };
+      return verdict === 'already_strong' ? 'Assessment: the CV is already strong; only light polish' : 'Assessment: the CV can be improved';
+    }
+    case 'assess_fit': {
+      const level = FIT_LEVELS.includes(input.level) ? input.level : 'weak';
+      const prev = resume.assessment?.fit;
+      const sameTarget = prev && prev.target === str(input.target);
+      resume.assessment = {
+        ...(resume.assessment || {}),
+        fit: {
+          level,
+          target: str(input.target),
+          summary: str(input.summary),
+          gaps: strList(input.gaps).slice(0, 8),
+          question: str(input.decisive_question),
+          better_fits: strList(input.better_fit_roles).slice(0, 4),
+          // "Apply anyway" survives re-assessment of the same target.
+          override: sameTarget ? !!prev.override : false,
+        },
+      };
+      let note = '';
+      const musts = (resume.target?.keywords || []).filter((k) => k.importance === 'must');
+      const absent = musts.filter((k) => k.evidence === 'no').length;
+      if (musts.length && absent / musts.length >= 0.5 && ['strong', 'good'].includes(level)) {
+        note = ` Note: ${absent} of ${musts.length} required keywords are marked as absent from the user's material, which does not match a "${level}" fit. Re-check.`;
+      }
+      return `Fit for ${resume.assessment.fit.target || 'the target'}: ${level.replace('_', ' ')}${note}`;
+    }
     case 'clear_target_job': {
       resume.target = null;
       return 'Stopped targeting a specific job';
@@ -305,6 +350,8 @@ export function normalizeResume(r) {
   r.header = cleanHeader(r.header);
   r.profile = { ...emptyProfile(), ...(r.profile || {}) };
   r.target = r.target || null;
+  r.assessment = r.assessment || { cv: null, fit: null };
+  r.settings.purpose = cleanPurpose(r.settings.purpose);
   r.sections = (r.sections || []).map((s) => ({
     ...s,
     hidden: !!s.hidden,
@@ -342,3 +389,9 @@ export function redo(session) {
 }
 
 export { snap as snapshot };
+
+/** The user chose "Apply anyway" despite a weak fit. */
+export function applyAnyway(resume) {
+  if (!resume.assessment?.fit) throw new OpError('There is no fit assessment to override.');
+  resume.assessment.fit.override = true;
+}

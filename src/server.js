@@ -4,9 +4,9 @@ import path from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo } from './ops.js';
+import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo, applyAnyway } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
-import { lintResume } from '../shared/lint.js';
+import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
 import { jdIssues, jdCoverage } from '../shared/jd.js';
 import { jobFromUrl, jobFromFile, jobFromText, JdError } from './jd.js';
 import { ExtractError, extractDocument } from './extract.js';
@@ -35,6 +35,8 @@ function view(s) {
     issues: [...lintResume(s.resume, s.sourceText), ...jdIssues(s.resume)],
     jd: s.jd ? { source: s.jd.source, title: s.jd.title, company: s.jd.company, chars: s.jd.text.length } : null,
     coverage: jdCoverage(s.resume),
+    // Measured before/after quality, when the user uploaded a CV.
+    quality: s.baseline && s.resume.sections.length ? { before: s.baseline, after: resumeCounts(s.resume) } : null,
     chat: s.chat,
     canUndo: s.undo.length > 0,
     canRedo: s.redo.length > 0,
@@ -111,13 +113,13 @@ export function createApp({ client } = {}) {
   }
 
   app.post('/api/sessions', (req, res) => {
-    const { template, pages, buildMode } = req.body || {};
+    const { template, pages, buildMode, purpose } = req.body || {};
     const mode = ['upload', 'talk', 'both'].includes(buildMode) ? buildMode : 'talk';
     const opener = OPENERS[mode];
     const s = {
       id: randomUUID(),
       opener,
-      resume: emptyResume({ template, pages: Number(pages), buildMode: mode }),
+      resume: emptyResume({ template, pages: Number(pages), buildMode: mode, purpose }),
       messages: [],
       chat: [{ role: 'assistant', text: opener }],
       sourceText: '',
@@ -126,6 +128,7 @@ export function createApp({ client } = {}) {
       redo: [],
       pendingNotes: [],
       jd: null,
+      baseline: null,
       busy: false,
       touched: Date.now(),
     };
@@ -164,6 +167,7 @@ export function createApp({ client } = {}) {
         ? { type: 'document', title: name, source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } }
         : { type: 'document', title: name, source: { type: 'text', media_type: 'text/plain', data: text } };
     req.s.sourceText += `\n${text}\n${links.join('\n')}\n${note}`;
+    if (text.trim()) req.s.baseline = cvTextCounts(text);
     const lowText = text.replace(/\s/g, '').length < 200;
     const prompt =
       `I've uploaded my current CV (${name}).` +
@@ -195,6 +199,26 @@ export function createApp({ client } = {}) {
     const doc = { type: 'document', title: `Job description: ${label}`, source: { type: 'text', media_type: 'text/plain', data: job.text } };
     const ask = `I want to apply for this job (${job.source}). Tailor my resume to it: record the target job and its keywords, show my relevant experience first in the job's language where it is true, and ask me about requirements you can't find evidence for. Do not add anything I haven't told you.`;
     await turn(req, res, [doc, { type: 'text', text: ask }], `Target job: ${label}`);
+  });
+
+  // The user chose to apply despite a weak fit: tailor honestly anyway.
+  app.post('/api/sessions/:id/apply-anyway', getSession, async (req, res) => {
+    if (req.s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const before = snapshot(req.s.resume);
+    try {
+      applyAnyway(req.s.resume);
+    } catch (err) {
+      if (err instanceof OpError) return res.status(400).json({ error: err.message });
+      throw err;
+    }
+    pushHistory(req.s, before);
+    const target = req.s.resume.assessment.fit.target || 'this role';
+    await turn(
+      req,
+      res,
+      [{ type: 'text', text: `(App note: the user pressed "Apply anyway" for ${target}.) I want to apply anyway. Tailor my resume for it as well as you honestly can, and tell me which gaps to address in my cover letter or interview.` }],
+      `Apply anyway: ${target}`,
+    );
   });
 
   app.delete('/api/sessions/:id/jd', getSession, async (req, res) => {

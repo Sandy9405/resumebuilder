@@ -265,3 +265,32 @@ export function atsIssues(resume) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------- before / after
+// Rough quality counts on free text (an uploaded CV), comparable with the same
+// counts on the built resume, so "improved" is measured rather than claimed.
+
+export const QUALITY_CODES = ['ai-language', 'ste-passive', 'ste-length', 'first-person'];
+
+export function qualityCounts(lines) {
+  const c = Object.fromEntries(QUALITY_CODES.map((k) => [k, 0]));
+  for (const raw of lines) {
+    const text = raw.replace(/^[\s•▪◦*\-–]+/, '').trim();
+    if (text.split(/\s+/).length < 6) continue; // headings, names, dates
+    if (AI_PHRASES.some(([re]) => re.test(text))) c['ai-language']++;
+    if (PASSIVE.test(text)) c['ste-passive']++;
+    if (text.split(/\s+/).length > 25) c['ste-length']++;
+    if (FIRST_PERSON.test(text)) c['first-person']++;
+  }
+  return c;
+}
+
+export function cvTextCounts(text) {
+  return qualityCounts(String(text || '').split(/\n+/));
+}
+
+export function resumeCounts(resume) {
+  const lines = [];
+  for (const [, text, kind, locked] of resumeTexts(resume)) if ((kind === 'bullet' || kind === 'detail') && !locked) lines.push(text);
+  return qualityCounts(lines);
+}
