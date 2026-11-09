@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './prompt.js';
 import { TOOLS } from './tools.js';
 import { applyOp, OpError, snapshot, pushHistory } from './ops.js';
+import { validate } from './validate.js';
 import { lintResume } from '../shared/lint.js';
 import { jdCoverage, jdIssues } from '../shared/jd.js';
 import { measureLayout, describeFit } from './layout.js';
@@ -15,6 +16,7 @@ import { getTemplate } from '../shared/templates.js';
 export const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5-5';
 const EFFORT = process.env.CLAUDE_EFFORT || 'medium';
 const MAX_STEPS = 10;
+const MAX_TOKENS = Number(process.env.CLAUDE_MAX_TOKENS) || 64000;
 
 let client = null;
 export function setClient(c) {
@@ -100,36 +102,71 @@ export async function runTurn(session, userBlocks) {
   const replies = [];
 
   try {
+    let jsonRetries = 0;
     for (let step = 0; step < MAX_STEPS; step++) {
-      const response = await getClient().beta.messages.create({
-        model: MODEL,
-        max_tokens: 16000,
-        system: SYSTEM_PROMPT,
-        tools: TOOLS,
-        messages: session.messages,
-        cache_control: { type: 'ephemeral' },
-        output_config: { effort: EFFORT },
-        ...(process.env.CLAUDE_FALLBACKS === 'off' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
-      });
+      // Streaming: a full first draft plus thinking can exceed what a single
+      // non-streamed request should wait for.
+      let response;
+      try {
+        response = await getClient()
+          .beta.messages.stream({
+            model: MODEL,
+            max_tokens: MAX_TOKENS,
+            system: SYSTEM_PROMPT,
+            tools: TOOLS,
+            messages: session.messages,
+            cache_control: { type: 'ephemeral' },
+            output_config: { effort: EFFORT },
+            ...(process.env.CLAUDE_FALLBACKS === 'off' ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
+          })
+          .finalMessage();
+        jsonRetries = 0;
+      } catch (err) {
+        // With eager input streaming, a tool input the SDK cannot parse at all
+        // rejects here. Re-issue the turn a couple of times; rethrow API errors.
+        if (err instanceof Anthropic.APIError || jsonRetries++ >= 2) throw err;
+        step--;
+        continue;
+      }
 
       session.messages.push({ role: 'assistant', content: response.content });
       const said = textOf(response.content);
       if (said) replies.push(said);
+      const toolUses = response.content.filter((b) => b.type === 'tool_use');
 
-      if (response.stop_reason === 'refusal') {
-        replies.push("I can't help with that request. Let's keep going with your resume.");
+      // A cut-off or refused turn may hold a half-written tool call: never run
+      // it, but answer it, or the next request would be rejected for an
+      // unanswered tool_use.
+      if (response.stop_reason === 'refusal' || response.stop_reason === 'max_tokens') {
+        if (toolUses.length) {
+          session.messages.push({
+            role: 'user',
+            content: toolUses.map((b) => ({ type: 'tool_result', tool_use_id: b.id, is_error: true, content: 'Not applied: the response was cut off before this call was complete.' })),
+          });
+        }
+        replies.push(
+          response.stop_reason === 'refusal'
+            ? "I can't help with that request. Let's keep going with your resume."
+            : 'That response was cut off before I finished. Please ask again, or ask for a smaller change.',
+        );
         break;
       }
-      if (response.stop_reason === 'max_tokens') {
-        replies.push('That response was cut off. Please ask again, or ask for a smaller change.');
-        break;
-      }
-      if (response.stop_reason !== 'tool_use') break;
+      if (!toolUses.length) break;
 
       const results = [];
       let applied = false;
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
+      for (const block of toolUses) {
+        const tool = TOOLS.find((t) => t.name === block.name);
+        const problems = tool ? validate(tool.input_schema, block.input) : [`unknown tool ${block.name}`];
+        if (problems.length) {
+          results.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            is_error: true,
+            content: `Not applied. Invalid input: ${problems.join('; ')}. Send the complete input again.`,
+          });
+          continue;
+        }
         try {
           const what = applyOp(session.resume, block.name, block.input);
           changes.push(what);

@@ -5,7 +5,8 @@
 let n = 0;
 const id = () => `toolu_mock_${++n}`;
 
-const SAMPLE = {
+const fill = (it) => ({ note: '', reserve_bullets: [], user_wording: [], ...it });
+const SAMPLE_RAW = {
   header: {
     name: 'Asha Verma',
     tagline: '',
@@ -47,6 +48,12 @@ const SAMPLE = {
   ],
   confirm_replace: false,
 };
+// Same shape the real model must send (validated by src/validate.js).
+const SAMPLE = {
+  ...SAMPLE_RAW,
+  header: { details: [], ...SAMPLE_RAW.header },
+  sections: SAMPLE_RAW.sections.map((sec) => ({ ...sec, items: sec.items.map(fill) })),
+};
 
 function lastUserText(messages) {
   const m = messages[messages.length - 1];
@@ -64,6 +71,10 @@ function msg(content, stop_reason) {
 export const mockClient = {
   beta: {
     messages: {
+      // Mirrors the SDK shape used by agent.js: stream(params).finalMessage().
+      stream(params) {
+        return { finalMessage: () => mockClient.beta.messages.create(params) };
+      },
       async create({ messages }) {
         const last = messages[messages.length - 1];
         const isToolResult = Array.isArray(last.content) && last.content[0]?.type === 'tool_result';
