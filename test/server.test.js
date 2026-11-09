@@ -76,3 +76,20 @@ test('unknown session is a 404', async () => {
   const r = await fetch(`${base}/api/sessions/does-not-exist`);
   assert.equal(r.status, 404);
 });
+
+test('health is public; APP_PASSWORD protects everything else', async () => {
+  process.env.APP_PASSWORD = 's3cret';
+  const locked = createApp({ client: mockClient }).listen(0);
+  await new Promise((r) => locked.once('listening', r));
+  const url = `http://localhost:${locked.address().port}`;
+  try {
+    assert.equal((await fetch(`${url}/health`)).status, 200);
+    assert.equal((await fetch(`${url}/`)).status, 401);
+    assert.equal((await fetch(`${url}/`, { headers: { Authorization: `Basic ${Buffer.from('x:wrong').toString('base64')}` } })).status, 401);
+    const ok = await fetch(`${url}/`, { headers: { Authorization: `Basic ${Buffer.from('anyone:s3cret').toString('base64')}` } });
+    assert.equal(ok.status, 200);
+  } finally {
+    delete process.env.APP_PASSWORD;
+    locked.close();
+  }
+});

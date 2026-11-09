@@ -22,8 +22,17 @@ const dataFontUrl = (file) => {
 };
 
 let browserPromise = null;
+let idleTimer = null;
+const IDLE_MS = Number(process.env.BROWSER_IDLE_MS) || 5 * 60 * 1000;
+
+function touchBrowser() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => closeLayout().catch(() => {}), IDLE_MS);
+  idleTimer.unref?.();
+}
 
 async function getBrowser() {
+  touchBrowser();
   if (!browserPromise) {
     browserPromise = (async () => {
       // createRequire so a globally installed Playwright (NODE_PATH) is found too.
@@ -101,6 +110,7 @@ export function describeFit(l) {
 }
 
 export async function closeLayout() {
+  clearTimeout(idleTimer);
   if (browserPromise) {
     const b = await browserPromise.catch(() => null);
     browserPromise = null;

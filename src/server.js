@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import mammoth from 'mammoth';
 import { extractText, getDocumentProxy } from 'unpdf';
@@ -49,6 +49,25 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 export function createApp({ client } = {}) {
   if (client) setClient(client);
   const app = express();
+  app.disable('x-powered-by');
+
+  // Health check for the host (Railway). Registered before auth so it stays reachable.
+  app.get('/health', (_req, res) => res.json({ ok: true }));
+
+  // Optional shared password. Without one, anyone with the URL can spend your
+  // Anthropic credits. Browsers show their own login prompt (HTTP Basic auth).
+  const password = process.env.APP_PASSWORD;
+  if (password) {
+    const expected = Buffer.from(password);
+    app.use((req, res, next) => {
+      const [scheme, encoded] = (req.headers.authorization || '').split(' ');
+      const given = scheme === 'Basic' && encoded ? Buffer.from(Buffer.from(encoded, 'base64').toString().split(':').slice(1).join(':')) : Buffer.alloc(0);
+      if (given.length === expected.length && timingSafeEqual(given, expected)) return next();
+      res.set('WWW-Authenticate', 'Basic realm="Resume Builder", charset="UTF-8"');
+      res.status(401).send('Password required.');
+    });
+  }
+
   app.use(express.json({ limit: '1mb' }));
   app.use(express.static(path.join(root, 'public')));
   app.use('/shared', express.static(path.join(root, 'shared')));
@@ -237,5 +256,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log('MOCK_CLAUDE=1: using the scripted development client, not Claude.');
   }
   const port = Number(process.env.PORT) || 3000;
-  createApp({ client }).listen(port, () => console.log(`Resume builder on http://localhost:${port}`));
+  if (!process.env.ANTHROPIC_API_KEY && !client) console.warn('ANTHROPIC_API_KEY is not set: chat and CV upload will fail until it is.');
+  if (!process.env.APP_PASSWORD) console.warn('APP_PASSWORD is not set: anyone with the URL can use the app and your API credits.');
+  createApp({ client }).listen(port, '0.0.0.0', () => console.log(`Resume builder listening on port ${port}`));
 }

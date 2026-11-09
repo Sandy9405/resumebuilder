@@ -38,6 +38,27 @@ Without Chromium, the browser preview still lays out pages and runs QA itself, b
 | `CHROMIUM_PATH` | none | Custom Chromium binary for Playwright |
 | `PORT` | `3000` | |
 | `MOCK_CLAUDE` | none | `1` uses the scripted mock client |
+| `APP_PASSWORD` | none | If set, the whole app (except `/health`) asks for this password |
+| `BROWSER_IDLE_MS` | `300000` | Close headless Chromium after this long unused, to save memory |
+
+## Deploy on Railway
+
+The repo includes a `Dockerfile` (on Microsoft's Playwright image, so Chromium and its system libraries come pre-installed) and a `railway.json` (Dockerfile build, `/health` check, restart on failure). Railway detects both automatically.
+
+1. On railway.com: **New Project → Deploy from GitHub repo →** `Sandy9405/resumebuilder`. In the service's **Settings → Source**, pick the branch to deploy.
+2. Under **Variables**, add `ANTHROPIC_API_KEY` and `APP_PASSWORD`. Railway sets `PORT` itself.
+3. Under **Settings → Networking → Generate Domain**, create the public HTTPS URL. HTTPS is required for the microphone to work.
+4. Open the URL and sign in with any username plus your `APP_PASSWORD`.
+
+Sessions live in memory, so a redeploy or restart ends any resume in progress. Leave Railway's Serverless (sleep) setting off for the same reason. Measured usage is about 155 MB of RAM with Chromium running and about 40 MB idle. Chromium shuts down after 5 idle minutes (`BROWSER_IDLE_MS`).
+
+| Variable | Required | Notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | From console.anthropic.com. The only API key the app needs. |
+| `APP_PASSWORD` | strongly recommended | Without it, anyone with the URL can use your Anthropic credits |
+| `CLAUDE_MODEL`, `CLAUDE_EFFORT`, `CLAUDE_FALLBACKS`, `BROWSER_IDLE_MS` | no | See the table above |
+
+Voice needs no key: speech recognition and read-aloud both run in the user's browser.
 
 ## The three formats
 
