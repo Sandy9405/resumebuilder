@@ -338,6 +338,7 @@ function voiceCopy() {
 
 function setComposerMode(mode) {
   $('#composer').dataset.mode = mode;
+  requestAnimationFrame(updateQuestionRef);
   const c = voiceCopy();
   // Only label it "Voice AI" when the AI transcriber (Sarvam) is doing the listening.
   $('#voicePill').hidden = voiceMode !== 'sarvam' || mode === 'transcribing';
@@ -356,10 +357,67 @@ function setComposerMode(mode) {
   }
 }
 
+// ---------- The question being answered ----------
+// The agent's question sits at the end of its last reply. When the voice box
+// grows, or the screen is small, that end can scroll out of view. Keep the chat
+// pinned to the bottom, and if the question still isn't visible, show it inside
+// the voice box so the user knows what they are answering.
+function questionText() {
+  const last = S?.chat?.[S.chat.length - 1];
+  if (last?.role !== 'assistant') return '';
+  const paras = String(last.text || '').replace(/\*\*/g, '').split(/\n+/).map((p) => p.trim()).filter(Boolean);
+  return [...paras].reverse().find((p) => p.includes('?')) || paras[paras.length - 1] || '';
+}
+
+function questionInView() {
+  const bubbles = $('#messages').querySelectorAll('.msg.assistant');
+  const bubble = bubbles[bubbles.length - 1];
+  if (!bubble || $('#messages').offsetParent === null) return true;
+  const m = $('#messages').getBoundingClientRect();
+  const b = bubble.getBoundingClientRect();
+  return b.bottom <= m.bottom + 4 && b.bottom - 48 >= m.top;
+}
+
+function updateQuestionRef() {
+  const card = $('#voiceQ');
+  const q = $('#composer').dataset.mode !== 'compact' ? questionText() : '';
+  const show = !!q && !questionInView();
+  if ($('#voiceQText').textContent !== q) {
+    $('#voiceQText').textContent = q;
+    card.setAttribute('aria-expanded', 'false');
+  }
+  if (card.hidden === show) card.hidden = !show;
+}
+
+let chatAtBottom = true;
+function watchChat() {
+  const msgs = $('#messages');
+  let frame = 0;
+  const later = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(updateQuestionRef);
+  };
+  msgs.addEventListener('scroll', () => {
+    chatAtBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 24;
+    later();
+  });
+  // When the composer grows, the chat shrinks: stay at the bottom if the user was there.
+  new ResizeObserver(() => {
+    if (chatAtBottom) msgs.scrollTop = msgs.scrollHeight;
+    later();
+  }).observe(msgs);
+  $('#voiceQ').addEventListener('click', () => {
+    const card = $('#voiceQ');
+    card.setAttribute('aria-expanded', String(card.getAttribute('aria-expanded') !== 'true'));
+  });
+}
+
 function updateComposer() {
   if (recState || rec || transcribing) return;
   const last = S?.chat?.[S.chat.length - 1];
   const asked = last?.role === 'assistant' && (S.ask || /\?\s*$/.test(last.text || ''));
+  // While the next step is uploading a CV, voice is not the main answer.
+  if (!$('#uploadZone').hidden) return setComposerMode('compact');
   const canVoice = !$('#micBtn').disabled;
   setComposerMode(!busy && asked && canVoice && !typedOverride ? 'story' : 'compact');
 }
@@ -1091,6 +1149,7 @@ function markResumeUpdated() {
 async function boot() {
   buildSetup();
   setupVoice();
+  watchChat();
   $('#startBtn').addEventListener('click', () => start().catch((e) => alert(e.message)));
   $('#composer').addEventListener('submit', (e) => { e.preventDefault(); send($('#input').value); });
   $('#input').addEventListener('keydown', (e) => {

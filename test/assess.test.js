@@ -72,3 +72,48 @@ test('server: purpose, measured quality after upload, weak fit, apply anyway', a
     app.close();
   }
 });
+
+test('job description before the CV: ask for the CV, no fit verdict, no "haven\'t seen your resume"', async () => {
+  // A scripted model that tries to judge fit right away; the server must stop it.
+  const seen = [];
+  const client = {
+    beta: {
+      messages: {
+        stream(params) {
+          seen.push(structuredClone(params.messages)); // the server appends to the same array later
+          const last = params.messages[params.messages.length - 1];
+          const isResult = last.content.some((b) => b.type === 'tool_result');
+          const content = isResult
+            ? [{ type: 'text', text: "Got the job. Now upload your current CV (PDF or Word). I'll tailor it to this job and tell you honestly how well you fit." }]
+            : [
+                { type: 'tool_use', id: 't1', name: 'set_target_job', input: { title: 'Product Manager', company: 'Profound', seniority: 'mid', keywords: [{ term: 'evals', aliases: [], importance: 'must', evidence: 'unknown' }] } },
+                { type: 'tool_use', id: 't2', name: 'assess_fit', input: { target: 'Product Manager at Profound', level: 'very_weak', summary: 'No evidence.', gaps: ['evals'], decisive_question: '', better_fit_roles: [] } },
+              ];
+          return { finalMessage: async () => ({ content, stop_reason: isResult ? 'end_turn' : 'tool_use' }) };
+        },
+      },
+    },
+  };
+  const app = createApp({ client }).listen(0);
+  await new Promise((r) => app.once('listening', r));
+  const url = `http://localhost:${app.address().port}`;
+  try {
+    const s = await (await fetch(`${url}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buildMode: 'upload', stage: 'experienced', template: 'pro', pages: 1, purpose: { type: 'jd' } }) })).json();
+    assert.match(s.chat[0].text, /job link or description, then upload your current CV/, 'the opener states the order');
+    const jd = new FormData();
+    jd.append('text', ['Product Manager, Applied AI', 'Profound', 'You will own evals for our LLM products and ship AI features to enterprise customers.', 'Requirements:', '- 3+ years of product management', '- Hands-on evals for LLM products', '- SQL and comfort with data', '- Experience working with engineers on AI features'].join('\n'));
+    const r = await (await fetch(`${url}/api/sessions/${s.id}/jd`, { method: 'POST', body: jd })).json();
+    const first = seen[0].at(-1).content.map((b) => b.text || '').join('\n');
+    assert.match(first, /Ask me to upload my CV next/);
+    assert.match(first, /Ask next: the user's CV/);
+    assert.match(first, /Never say you haven't seen/);
+    assert.match(first, /Evidence requests: none until the CV arrives/);
+    const results = seen[1].at(-1).content;
+    assert.equal(results.find((b) => b.tool_use_id === 't2').is_error, true, 'assess_fit refused before the CV');
+    assert.ok(!r.resume.assessment?.fit, 'no fit verdict stored');
+    assert.equal(r.resume.target.company, 'Profound', 'the job is still recorded');
+    assert.equal(r.ask, null);
+  } finally {
+    app.close();
+  }
+});

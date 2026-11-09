@@ -138,6 +138,11 @@
            compact (type or tap the mic), story (the AI asked; voice is the big, obvious answer),
            recording (live level and countdown), transcribing. -->
       <form id="composer" class="composer" data-mode="compact">
+        <!-- The question being answered, shown here only when it has scrolled out of view. -->
+        <button type="button" id="voiceQ" class="voice-q" aria-expanded="false" hidden>
+          <span class="voice-q-label">Answering</span>
+          <span id="voiceQText" class="voice-q-text"></span>
+        </button>
         <div class="voice">
           <button type="button" id="micBtn" class="mic" aria-pressed="false" aria-label="Answer with Voice AI">
             <span class="halo" aria-hidden="true"></span>
