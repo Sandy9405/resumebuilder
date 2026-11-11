@@ -4,7 +4,7 @@ import path from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo, applyAnyway } from './ops.js';
+import { emptyResume, applyOp, applyManualEdit, OpError, pushHistory, snapshot, undo, redo, applyAnyway, cleanPurpose } from './ops.js';
 import { runTurn, describeApiError, setClient } from './agent.js';
 import { lintResume, cvTextCounts, resumeCounts } from '../shared/lint.js';
 import { jdIssues, jdCoverage, evidenceRequests } from '../shared/jd.js';
@@ -16,6 +16,7 @@ import { ExtractError, extractDocument } from './extract.js';
 import { measureLayout, renderPdf, layoutAvailable } from './layout.js';
 import { renderDocx } from './docx.js';
 import { renderResume } from '../shared/render.js';
+import { samplesFor } from './samples.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -149,6 +150,26 @@ export function createApp({ client, voiceClient } = {}) {
   });
 
   app.get('/api/sessions/:id', getSession, (req, res) => res.json(view(req.s)));
+
+  // Made-up sample resumes, one per format offered at this career stage, for
+  // the layout previews in setup. The browser lays them out with the real engine.
+  app.get('/api/samples/:stage', (req, res) => res.json(samplesFor(req.params.stage)));
+
+  // Change what the resume is for. Used when someone started with "a specific
+  // job" (the default) but has no job yet.
+  app.post('/api/sessions/:id/purpose', getSession, (req, res) => {
+    const s = req.s;
+    if (s.busy) return res.status(409).json({ error: 'Still working on your last message.' });
+    const purpose = cleanPurpose(req.body?.purpose);
+    if (!purpose.type) return res.status(400).json({ error: 'Choose a specific job, a type of role, or general use.' });
+    s.resume.settings.purpose = purpose;
+    // Nothing has been said yet: the opening line should no longer ask for a job.
+    if (!s.messages.length && s.chat.length === 1 && purpose.type !== 'jd' && s.opener === OPENER_JD_UPLOAD) {
+      s.opener = OPENERS[s.resume.settings.buildMode] || OPENERS.talk;
+      s.chat[0].text = s.opener;
+    }
+    res.json(view(s));
+  });
 
   // Which speech-to-text the browser should use: Sarvam via this server, or the
   // browser's own recognition when no key is configured (e.g. local development).

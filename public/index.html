@@ -67,7 +67,7 @@
       <section class="step" data-step="3" aria-labelledby="s3" hidden>
         <p class="eyebrow">Step 3 of 4</p>
         <h1 id="s3">Choose a layout</h1>
-        <p class="lede">You can switch any time; your content stays the same.</p>
+        <p class="lede">Each preview shows a made-up person in that layout. You can switch any time; your content stays the same.</p>
         <div class="choices layouts" id="templateCards"></div>
       </section>
 
@@ -84,12 +84,12 @@
         <div class="field">
           <p class="field-label">What is it for?</p>
           <div class="segmented" role="radiogroup" aria-label="Purpose">
-            <label><input type="radio" name="purpose" value="general" checked><span>General</span></label>
+            <label><input type="radio" name="purpose" value="jd" checked><span>A specific job</span></label>
             <label><input type="radio" name="purpose" value="role"><span>A type of role</span></label>
-            <label><input type="radio" name="purpose" value="jd"><span>A specific job</span></label>
+            <label><input type="radio" name="purpose" value="general"><span>General</span></label>
           </div>
           <input type="text" id="purposeRole" class="role-input" placeholder="Which role? e.g. Product Manager" maxlength="120" hidden>
-          <p class="hint" id="purposeHint">A strong all-round resume, no single target.</p>
+          <p class="hint" id="purposeHint">Next, you'll paste the job link or description. I'll tailor to it and tell you how well you fit.</p>
         </div>
       </section>
 
@@ -225,10 +225,27 @@
       </label>
       <p id="jdError" class="error-text" hidden></p>
       <div class="dialog-actions">
+        <button type="button" id="jdNoJob" class="text-btn no-job" hidden>I don't have a job yet</button>
         <button type="button" id="jdCancel" class="pill quiet">Cancel</button>
         <button type="submit" id="jdSubmit" class="pill primary">Tailor my resume</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Full-page look at a layout, with made-up sample data. -->
+  <dialog id="previewDialog" class="sheet-dialog preview-dialog" aria-labelledby="pvTitle">
+    <div class="pv-head">
+      <div>
+        <h2 id="pvTitle">Layout</h2>
+        <p class="hint">Sample data. Your resume will use your own details.</p>
+      </div>
+      <button type="button" id="pvClose" class="icon-btn" aria-label="Close preview"><svg><use href="#i-plus"/></svg></button>
+    </div>
+    <div class="pv-body" id="pvBody"></div>
+    <div class="dialog-actions pv-actions">
+      <span class="hint pv-zoom-hint">Tap the page to zoom</span>
+      <button type="button" id="pvUse" class="pill primary">Use this layout</button>
+    </div>
   </dialog>
 
   <script type="module" src="/app.js"></script>

@@ -203,9 +203,10 @@ TEMPLATES.pro = {
 
 // Formats offered by career stage. Two stages only: recent graduates get the
 // academic formats; experienced people (anyone working, or switching jobs) get
-// experience-first formats.
+// experience-first formats. Recent graduates can also pick Experienced
+// Professional if they want it: it is listed last and never recommended to them.
 export const FORMATS_BY_STAGE = {
-  recent: ['iitb', 'iima', 'hbs'],
+  recent: ['iitb', 'iima', 'hbs', 'pro'],
   experienced: ['pro', 'hbs'],
 };
 
