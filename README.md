@@ -67,7 +67,7 @@ Setup asks **"Where are you in your career?"** and only shows the formats that s
 
 | Answer | Formats offered |
 |---|---|
-| Student or recent graduate (last two years) | IITB, IIMA, HBS |
+| Student or recent graduate (last two years) | IITB, IIMA, HBS, then Experienced Professional (available, never recommended to graduates) |
 | Experienced (working, or switching jobs) | Experienced Professional (recommended), HBS |
 
 **Experienced Professional** comes from the product owner's own CV. It's A4, in Calibri (bundled as Carlito, which has identical character widths), with a navy name and section rules, grey subtitle and dates. The layout:
@@ -224,7 +224,9 @@ When a job description or link names a requirement the CV doesn't show (evals, B
 
 ## Interface
 
-- **Setup is four short steps**, one question per screen with a progress bar: career stage (Recent graduate or Experienced), how to start (Upload, Talk it through, or Both), layout (thumbnails, only the ones that suit the stage), then length and purpose. Steps 1 to 3 move on as soon as you pick; Back is always there.
+- **Setup is four short steps**, one question per screen with a progress bar: career stage (Recent graduate or Experienced), how to start (Upload, Talk it through, or Both), layout, then length and purpose. Steps 1 and 2 move on as soon as you pick; Back is always there.
+- **Layout previews are real pages.** Each layout card shows a made-up person (`src/samples.js`) laid out by the same engine that builds the real resume, so the preview is exactly what the layout produces and stays correct when a layout changes. Graduates and experienced people each see a sample that looks like their situation. "See full page" opens it at reading size (tap to zoom on a phone) with "Use this layout". Every preview is marked "Sample". The layout step does not move on by itself, so people can compare.
+- **Purpose defaults to "A specific job"**, then "A type of role", then "General". Starting with a specific job opens the job dialog; "I don't have a job yet" there switches the purpose to General so nobody is stuck.
 - **The composer changes with the conversation.** When the agent asks a question, voice becomes the main way to answer: a large mic, labelled **Voice AI** (shown only when Sarvam is transcribing), with "or type instead" underneath. If the agent's question has scrolled out of view (a long reply, or a small phone screen), the voice box shows it on an **Answering** card; tap the card to read all of it. The chat also stays pinned to the bottom as the voice box grows. While recording the mic turns red with a live level meter and a countdown; after you tap stop it shows that your words are being turned into text. Otherwise the composer is a compact text field with a small mic.
 - **Toolbar:** layout and page count, undo/redo, Edit, Checks (one number: things worth fixing) and one Download button with PDF and Word options. Checks and Download stay disabled until a first draft exists.
 - Light and dark mode follow the system setting.
@@ -258,6 +260,7 @@ src/agent.js          one conversation turn: Claude + tool loop + QA feedback
 src/layout.js         headless Chromium: layout, QA and PDF
 src/jd.js             job description fetch (SSRF-safe), HTML/JSON-LD extraction
 src/extract.js        PDF/DOCX/TXT text extraction
+src/samples.js        made-up sample resumes for the layout previews in setup
 shared/jd.js          job keyword coverage
 src/docx.js           DOCX export
 src/server.js         Express API

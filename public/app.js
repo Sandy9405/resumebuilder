@@ -30,19 +30,98 @@ async function api(path, opts = {}) {
 // experience-first ones. Any layout stays available from the toolbar later.
 const THUMB = '<i class="t-name"></i><i class="t-sub"></i><i class="t-h"></i><i class="w9"></i><i class="w8"></i><i class="w9"></i><i class="t-h"></i><i class="w8"></i><i class="w6"></i><i class="t-h"></i><i class="w7"></i>';
 
+const setupStage = () => document.querySelector('input[name="stage"]:checked')?.value || 'recent';
+
 function renderFormatCards() {
-  const stage = document.querySelector('input[name="stage"]:checked')?.value || 'recent';
+  const stage = setupStage();
   const ids = FORMATS_BY_STAGE[stage] || Object.keys(TEMPLATES);
   $('#templateCards').innerHTML = ids
     .map((id, i) => {
       const t = TEMPLATES[id];
       const rec = i === 0 && stage === 'experienced' ? '<em class="tag rec">Recommended</em>' : '';
       return `<label class="choice"><input type="radio" name="template" value="${t.id}">${rec}
-      <span class="thumb thumb-${t.id}" aria-hidden="true">${THUMB}</span>
-      <b>${t.label}</b><span>${t.blurb}</span></label>`;
+      <span class="thumb thumb-${t.id}" data-thumb="${t.id}" aria-hidden="true">${THUMB}</span>
+      <b>${t.label}</b><span>${t.blurb}</span>
+      <button type="button" class="text-btn preview-btn" data-preview="${t.id}" hidden>See full page</button></label>`;
     })
     .join('');
-  $('#templateCards').querySelectorAll('input').forEach((r) => r.addEventListener('change', onChoice));
+  // No auto-advance here: people compare the previews, then press Continue.
+  $('#templateCards').querySelectorAll('input').forEach((r) => r.addEventListener('change', updateNav));
+  $('#templateCards').querySelectorAll('[data-preview]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openLayoutPreview(b.dataset.preview);
+    }),
+  );
+}
+
+// ---------- Layout previews ----------
+// A made-up person laid out by the real engine, so each preview is exactly what
+// that layout produces. If the samples can't be loaded, the simple sketches stay.
+const sampleCache = {};
+async function loadSamples(stage) {
+  if (!sampleCache[stage]) sampleCache[stage] = api(`/api/samples/${stage}`).catch(() => ({}));
+  return sampleCache[stage];
+}
+
+/** A full-size page in an iframe, scaled to the width of its holder. */
+function pageView(resume) {
+  const t = getTemplate(resume.settings.template);
+  const w = Math.ceil(t.page.widthMm * MM_TO_PX);
+  const h = Math.ceil(t.page.heightMm * MM_TO_PX);
+  const view = document.createElement('span');
+  view.className = 'page-view';
+  view.style.setProperty('--ar', String(w / h));
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  frame.tabIndex = -1;
+  frame.style.width = `${w}px`;
+  frame.style.height = `${h}px`;
+  frame.srcdoc = renderResume(resume, {});
+  view.appendChild(frame);
+  const fit = () => view.clientWidth && view.style.setProperty('--s', String(view.clientWidth / w));
+  new ResizeObserver(fit).observe(view);
+  requestAnimationFrame(fit);
+  return view;
+}
+
+// Called when the layout step is on screen: a hidden page cannot be laid out.
+async function fillLayoutPreviews() {
+  const stage = setupStage();
+  const samples = await loadSamples(stage);
+  if (stage !== setupStage()) return;
+  for (const holder of $('#templateCards').querySelectorAll('[data-thumb]')) {
+    const resume = samples[holder.dataset.thumb];
+    if (!resume || holder.classList.contains('real')) continue;
+    holder.textContent = '';
+    holder.classList.add('real');
+    holder.appendChild(pageView(resume));
+    const btn = holder.parentElement.querySelector('[data-preview]');
+    if (btn) btn.hidden = false;
+  }
+}
+
+let previewId = '';
+async function openLayoutPreview(id) {
+  const resume = (await loadSamples(setupStage()))[id];
+  if (!resume) return;
+  previewId = id;
+  $('#pvTitle').textContent = getTemplate(id).label;
+  const view = pageView(resume);
+  view.addEventListener('click', () => view.classList.toggle('zoomed'));
+  $('#pvBody').replaceChildren(view);
+  $('#previewDialog').showModal();
+  $('#pvBody').scrollTop = 0;
+}
+
+function useLayoutFromPreview() {
+  const radio = document.querySelector(`input[name="template"][value="${previewId}"]`);
+  $('#previewDialog').close();
+  if (!radio) return;
+  radio.checked = true;
+  updateNav();
+  if (step === 3) showStep(4);
 }
 
 const STEPS = 4;
@@ -67,6 +146,7 @@ function showStep(n) {
   $('#nextBtn').hidden = n === STEPS;
   $('#startBtn').hidden = n !== STEPS;
   updateNav();
+  if (n === 3) fillLayoutPreviews();
   document.querySelector(`.step[data-step="${n}"] h1`)?.focus({ preventScroll: true });
 }
 
@@ -102,6 +182,9 @@ function buildSetup() {
   $('#purposeRole').addEventListener('input', updateNav);
   $('#nextBtn').addEventListener('click', () => stepValid(step) && showStep(step + 1));
   $('#backBtn').addEventListener('click', () => showStep(Math.max(1, step - 1)));
+  $('#pvClose').addEventListener('click', () => $('#previewDialog').close());
+  $('#pvUse').addEventListener('click', useLayoutFromPreview);
+  $('#previewDialog').addEventListener('close', () => $('#pvBody').replaceChildren());
   document.querySelectorAll('.step h1').forEach((h) => h.setAttribute('tabindex', '-1'));
   $('#templateSel').innerHTML = Object.values(TEMPLATES).map((t) => `<option value="${t.id}">${t.label}</option>`).join('');
   showStep(1);
@@ -124,7 +207,10 @@ async function start() {
   showWorkspace();
   render();
   if (body.buildMode === 'talk') speak(S.chat[0]?.text);
-  if (purposeType === 'jd') openJdDialog();
+  if (purposeType === 'jd') {
+    jdNoJobOffer = true; // "A specific job" is the default, so give people without one a way out
+    openJdDialog();
+  }
 }
 
 function showWorkspace() {
@@ -799,7 +885,22 @@ async function skipRequirement(term) {
   }
 }
 
+// True while the job dialog was opened by setup (not by the user asking for it):
+// it then offers "I don't have a job yet".
+let jdNoJobOffer = false;
+
+async function noJobYet() {
+  $('#jdDialog').close();
+  jdNoJobOffer = false;
+  try {
+    applyView(await api(`/api/sessions/${S.id}/purpose`, { method: 'POST', body: { purpose: { type: 'general' } } }));
+  } catch (err) {
+    addBubble('error', err.message);
+  }
+}
+
 function openJdDialog(error = '') {
+  $('#jdNoJob').hidden = !jdNoJobOffer;
   $('#jdError').hidden = !error;
   $('#jdError').textContent = error;
   if (!error) {
@@ -822,6 +923,7 @@ async function submitJd(e) {
   else if (url) fd.append('url', url);
   else fd.append('text', text);
   $('#jdDialog').close();
+  jdNoJobOffer = false;
   addBubble('user', `Target job: ${file ? file.name : url || 'pasted job description'}`);
   setBusy(true, url ? 'Reading the job page and tailoring your resume…' : 'Reading the job description and tailoring your resume…');
   try {
@@ -1198,7 +1300,11 @@ async function boot() {
   document.addEventListener('click', (e) => !e.target.closest('.menu-wrap') && closeMenu());
   document.addEventListener('keydown', (e) => e.key === 'Escape' && closeMenu());
   menu.addEventListener('click', closeMenu);
-  $('#jdBtn').addEventListener('click', () => openJdDialog());
+  $('#jdBtn').addEventListener('click', () => {
+    jdNoJobOffer = false;
+    openJdDialog();
+  });
+  $('#jdNoJob').addEventListener('click', noJobYet);
   $('#jdCancel').addEventListener('click', () => $('#jdDialog').close());
   $('#jdForm').addEventListener('submit', submitJd);
   $('#jdRemove').addEventListener('click', async () => {

@@ -132,7 +132,7 @@ svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .setup-nav .pill { height: 44px; padding: 0 26px; font-size: 16px; }
 
 /* Layout thumbnails */
-.layouts { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.layouts { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .thumb { display: block; align-self: center; height: 128px; width: auto; aspect-ratio: 0.77; padding: 14px 11px; border-radius: 8px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.08); margin-bottom: 12px; overflow: hidden; }
 .thumb i { display: block; height: 3px; border-radius: 2px; background: #d2d2d7; margin: 0 0 5px; }
 .thumb .t-name { height: 7px; width: 48%; background: #1d1d1f; margin-bottom: 5px; }
@@ -148,7 +148,29 @@ svg { width: 20px; height: 20px; flex: 0 0 auto; }
 .thumb-pro .t-name { margin: 0 auto 5px; background: #1f3863; }
 .thumb-pro .t-sub { margin: 0 auto 10px; }
 .thumb-pro .t-h { border-bottom: 1.5px solid #1f3863; height: 4px; }
-.choice .rec { position: absolute; top: 14px; right: 14px; }
+.choice .rec { position: absolute; top: 14px; right: 14px; z-index: 1; }
+
+/* Real page previews: the actual layout engine, drawn small. The page is an
+   iframe at full size, scaled down to the width of its holder (--s is set in JS). */
+.page-view { position: relative; display: block; width: 100%; aspect-ratio: var(--ar, 0.707); background: #fff; overflow: hidden; }
+.page-view iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; transform: scale(var(--s, 0.2)); pointer-events: none; background: #fff; }
+.thumb.real { height: auto; width: 100%; max-width: 230px; padding: 0; aspect-ratio: auto; border-radius: 6px; position: relative; }
+.thumb.real::after { content: "Sample"; position: absolute; left: 6px; bottom: 6px; padding: 1px 7px; border-radius: 980px; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; color: #fff; background: rgba(0, 0, 0, 0.55); }
+.preview-btn { align-self: flex-start; margin-top: 6px; padding: 4px 0; font-size: 14px; }
+.layouts { align-items: start; }
+
+.preview-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+.preview-dialog[open] { display: flex; flex-direction: column; }
+.pv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 20px 12px; }
+.pv-head .hint { margin: 2px 0 0; }
+#pvClose svg { transform: rotate(45deg); }
+.pv-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 20px 16px; background: var(--stage); -webkit-overflow-scrolling: touch; }
+.pv-body .page-view { margin: 12px auto; box-shadow: 0 1px 8px rgba(0, 0, 0, 0.18); cursor: zoom-in; }
+.pv-body .page-view.zoomed { width: 220%; cursor: zoom-out; }
+.pv-actions { align-items: center; padding: 12px 20px 16px; margin: 0; }
+.pv-zoom-hint { margin: 0 auto 0 0; display: none; }
+.no-job { margin-right: auto; white-space: nowrap; }
+#jdForm .dialog-actions { flex-wrap: wrap; }
 
 /* ---------- Workspace ---------- */
 .workspace { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; height: 100dvh; }
@@ -349,6 +371,15 @@ details.changes ul { margin: 4px 0 0; padding-left: 18px; }
   .messages { padding: 8px 12px 12px; }
   .msg { max-width: 90%; }
   .composer { margin: 0 10px max(8px, env(safe-area-inset-bottom)); }
+  /* Layout previews: two per row so four layouts fit without a long scroll. */
+  .layouts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .layouts .choice { padding: 12px; }
+  .layouts .choice b { font-size: 15px; }
+  .layouts .choice > span:not(.thumb) { font-size: 12.5px; }
+  .layouts .choice .rec { top: 6px; right: 6px; }
+  .preview-dialog { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  .pv-zoom-hint { display: block; }
+  .no-job { flex: 1 0 100%; text-align: left; padding: 6px 0; }
   /* Phones: a slightly smaller voice box so more of the conversation stays visible. */
   .composer:is([data-mode="story"], [data-mode="recording"], [data-mode="transcribing"]) { padding: 14px 12px 10px; }
   .composer:is([data-mode="story"], [data-mode="recording"]) .mic { width: 64px; height: 64px; }

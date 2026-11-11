@@ -12,7 +12,7 @@ import { sampleResume } from './fixtures/sample-resume.js';
 after(closeLayout);
 
 test('career stage routes formats: recent graduates get academic formats, professionals get experience-first', () => {
-  assert.deepEqual(FORMATS_BY_STAGE.recent, ['iitb', 'iima', 'hbs']);
+  assert.deepEqual(FORMATS_BY_STAGE.recent, ['iitb', 'iima', 'hbs', 'pro'], 'graduates can pick the experienced layout; it is listed last, not recommended');
   assert.equal(FORMATS_BY_STAGE.experienced[0], 'pro');
   assert.deepEqual(Object.keys(FORMATS_BY_STAGE), ['recent', 'experienced'], 'two stages only');
   assert.equal(emptyResume({ stage: 'working' }).settings.stage, 'experienced', 'old sessions map to experienced');
